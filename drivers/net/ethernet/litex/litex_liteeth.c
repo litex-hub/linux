@@ -208,6 +208,8 @@ static int liteeth_stop(struct net_device *netdev)
 {
 	struct liteeth *priv = netdev_priv(netdev);
 
+	netif_stop_queue(netdev);
+
 	del_timer_sync(&priv->poll_timer);
 
 	outreg8(0, priv->base + LITEETH_WRITER_EV_ENABLE);
