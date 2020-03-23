@@ -382,7 +382,7 @@ static int liteeth_probe(struct platform_device *pdev)
 		goto err;
 	}
 
-	netdev_info(netdev, "irq %d, mapped at %p\n", netdev->irq, priv->base);
+	netdev_info(netdev, "irq %d, mapped at %px\n", netdev->irq, priv->base);
 
 	return 0;
 err:
