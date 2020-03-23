@@ -1,0 +1,12 @@
+LiteUART serial controller
+
+Required properties:
+- compatible: should be "litex,liteuart"
+- reg: base address and length of the register set for this device
+
+Example:
+
+uart0: serial@f0001000 {
+	compatible = "litex,liteuart";
+	reg = <0xf0001000 0x100>;
+};
