@@ -48,6 +48,8 @@ struct liteeth {
 	void __iomem *base;
 	void __iomem *mdio_base;
 	struct net_device *netdev;
+	int use_polling;
+	struct timer_list poll_timer;
 	struct device *dev;
 	struct mii_bus *mii_bus;
 
@@ -152,6 +154,14 @@ static irqreturn_t liteeth_interrupt(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
+static void liteeh_timeout(struct timer_list *t)
+{
+	struct liteeth *priv = from_timer(priv, t, poll_timer);
+
+	liteeth_interrupt(0, priv->netdev);
+	mod_timer(&priv->poll_timer, jiffies + msecs_to_jiffies(10));
+}
+
 static int liteeth_open(struct net_device *netdev)
 {
 	struct liteeth *priv = netdev_priv(netdev);
@@ -162,21 +172,30 @@ static int liteeth_open(struct net_device *netdev)
 	priv->cur_speed = SPEED_100;
 	netif_carrier_on(netdev);
 
-	err = request_irq(netdev->irq, liteeth_interrupt, 0, netdev->name, netdev);
-	if (err) {
-		netdev_err(netdev, "failed to request irq %d\n", netdev->irq);
-		goto err_irq;
+	if (!priv->use_polling) {
+		err = request_irq(netdev->irq, liteeth_interrupt, 0, netdev->name, netdev);
+		if (err) {
+			netdev_err(netdev, "failed to request irq %d\n", netdev->irq);
+			goto err_irq;
+		}
 	}
 
 	/* Clear pending events? */
 	outreg8(1, priv->base + LITEETH_WRITER_EV_PENDING);
 	outreg8(1, priv->base + LITEETH_READER_EV_PENDING);
 
-	/* Enable IRQs? */
-	outreg8(1, priv->base + LITEETH_WRITER_EV_ENABLE);
-	outreg8(1, priv->base + LITEETH_READER_EV_ENABLE);
+	if (!priv->use_polling) {
+		/* Enable IRQs? */
+		outreg8(1, priv->base + LITEETH_WRITER_EV_ENABLE);
+		outreg8(1, priv->base + LITEETH_READER_EV_ENABLE);
+	}
 
 	netif_start_queue(netdev);
+
+	if (priv->use_polling) {
+		timer_setup(&priv->poll_timer, liteeh_timeout, 0);
+		mod_timer(&priv->poll_timer, jiffies + msecs_to_jiffies(50));
+	}
 
 	return 0;
 
@@ -189,10 +208,14 @@ static int liteeth_stop(struct net_device *netdev)
 {
 	struct liteeth *priv = netdev_priv(netdev);
 
+	del_timer_sync(&priv->poll_timer);
+
 	outreg8(0, priv->base + LITEETH_WRITER_EV_ENABLE);
 	outreg8(0, priv->base + LITEETH_READER_EV_ENABLE);
 
-	free_irq(netdev->irq, netdev);
+	if (!priv->use_polling) {
+		free_irq(netdev->irq, netdev);
+	}
 
 	return 0;
 }
@@ -287,10 +310,12 @@ static int liteeth_probe(struct platform_device *pdev)
 	priv->netdev = netdev;
 	priv->dev = &pdev->dev;
 
+	priv->use_polling = 0;
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0) {
-		dev_err(&pdev->dev, "Failed to get IRQ\n");
-		return irq;
+		dev_err(&pdev->dev, "Failed to get IRQ, using polling\n");
+		priv->use_polling = 1;
+		irq = 0;
 	}
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
