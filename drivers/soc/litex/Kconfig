@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: GPL-2.0
+
+menu "Enable LiteX SoC Builder specific drivers"
+
+config LITEX_SOC_CONTROLLER
+	tristate "Enable LiteX SoC Controller driver"
+	help
+	This option enables the SoC Controller Driver which detects
+	endiannes of SoC, sets correct functions in litex.h in runtime
+	and allow other LiteX drivers to initialise
+	All drivers that use functions from litex.h must depend on
+	LITEX_SOC_CONTROLLER
+
+endmenu
