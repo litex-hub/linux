@@ -17,8 +17,14 @@
 #include <linux/errno.h>
 #include <linux/io.h>
 
-#define SCRATCH_REG_OFF     0x04
-#define SCRATCH_REG_SIZE    4
+/* scratch register located one CPU x-len past the base address */
+#ifdef CONFIG_64BIT
+#define SCRATCH_REG_OFF     8
+#else
+#define SCRATCH_REG_OFF     4
+#endif
+
+#define SCRATCH_REG_SIZE    sizeof(u32)
 #define SCRATCH_REG_VALUE   0x12345678
 #define SCRATCH_TEST_VALUE  0xdeadbeef
 
