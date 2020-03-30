@@ -17,12 +17,12 @@
 #include <linux/errno.h>
 #include <linux/io.h>
 
-#define SCRATCH_REG_OFF         0x04
-#define SCRATCH_REG_SIZE        4
-#define SCRATCH_REG_VALUE       0x12345678
-#define SCRATCH_TEST_VALUE      0xdeadbeef
+#define SCRATCH_REG_OFF     0x04
+#define SCRATCH_REG_SIZE    4
+#define SCRATCH_REG_VALUE   0x12345678
+#define SCRATCH_TEST_VALUE  0xdeadbeef
 
-int accessors_ok = 0;
+static int accessors_ok = 0;
 
 /*
  * Check if accessors are safe to be used by other drivers
@@ -45,22 +45,24 @@ static int litex_check_csr_access(void __iomem *reg_addr)
 	reg = litex_get_reg(reg_addr + SCRATCH_REG_OFF, SCRATCH_REG_SIZE);
 
 	if (reg != SCRATCH_REG_VALUE) {
-		panic("Scratch register read error! Expected: 0x%x but got: 0x%x",
-							SCRATCH_REG_VALUE, reg);
+		panic("Scratch register read error! Expected: 0x%x, got: 0x%x",
+		      SCRATCH_REG_VALUE, reg);
 		return -EINVAL;
 	}
 
-	litex_set_reg(reg_addr + SCRATCH_REG_OFF, SCRATCH_REG_SIZE, SCRATCH_TEST_VALUE);
+	litex_set_reg(reg_addr + SCRATCH_REG_OFF, SCRATCH_REG_SIZE,
+		      SCRATCH_TEST_VALUE);
 	reg = litex_get_reg(reg_addr + SCRATCH_REG_OFF, SCRATCH_REG_SIZE);
 
 	if (reg != SCRATCH_TEST_VALUE) {
-		panic("Scratch register write error! Expected: 0x%x but got: 0x%x",
-							SCRATCH_TEST_VALUE, reg);
+		panic("Scratch register write error! Expected: 0x%x, got: 0x%x",
+		      SCRATCH_TEST_VALUE, reg);
 		return -EINVAL;
 	}
 
 	/* restore original value of the SCRATCH register */
-	litex_set_reg(reg_addr + SCRATCH_REG_OFF, SCRATCH_REG_SIZE, SCRATCH_REG_VALUE);
+	litex_set_reg(reg_addr + SCRATCH_REG_OFF, SCRATCH_REG_SIZE,
+		      SCRATCH_REG_VALUE);
 
 	/* Set flag for other drivers */
 	accessors_ok = 1;
