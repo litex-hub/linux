@@ -13,33 +13,12 @@
 #include <linux/of_address.h>
 #include <linux/phy.h>
 #include <linux/platform_device.h>
-
 #include <linux/iopoll.h>
+
+#include "litex_liteeth.h"
 
 #define DRV_NAME	"liteeth"
 #define DRV_VERSION	"0.1"
-
-#define LITEETH_WRITER_SLOT		0x00
-#define LITEETH_WRITER_LENGTH		0x04
-#define LITEETH_WRITER_ERRORS		0x14
-#define LITEETH_WRITER_EV_STATUS	0x24
-#define LITEETH_WRITER_EV_PENDING	0x28
-#define LITEETH_WRITER_EV_ENABLE	0x2c
-#define LITEETH_READER_START		0x30
-#define LITEETH_READER_READY		0x34
-#define LITEETH_READER_LEVEL		0x38
-#define LITEETH_READER_SLOT		0x3c
-#define LITEETH_READER_LENGTH		0x40
-#define LITEETH_READER_EV_STATUS	0x48
-#define LITEETH_READER_EV_PENDING	0x4c
-#define LITEETH_READER_EV_ENABLE	0x50
-#define LITEETH_PREAMBLE_CRC		0x54
-#define LITEETH_PREAMBLE_ERRORS		0x58
-#define LITEETH_CRC_ERRORS		0x68
-
-#define LITEETH_PHY_CRG_RESET		0x00
-#define LITEETH_MDIO_W			0x04
-#define LITEETH_MDIO_R			0x08
 
 #define LITEETH_BUFFER_SIZE		0x800
 #define MAX_PKT_SIZE			LITEETH_BUFFER_SIZE
@@ -68,33 +47,6 @@ struct liteeth {
 	void __iomem *rx_base;
 };
 
-/* Helper routines for accessing MMIO over a wishbone bus.
- * Each 32 bit memory location contains a single byte of data, stored
- * little endian
- */
-static inline void outreg8(u8 val, void __iomem *addr)
-{
-	iowrite32(val, addr);
-}
-
-static inline void outreg16(u16 val, void __iomem *addr)
-{
-	outreg8(val >> 8, addr);
-	outreg8(val, addr + 4);
-}
-
-static inline u8 inreg8(void __iomem *addr)
-{
-	return ioread32(addr);
-}
-
-static inline u32 inreg32(void __iomem *addr)
-{
-	return (inreg8(addr) << 24) |
-		(inreg8(addr + 0x4) << 16) |
-		(inreg8(addr + 0x8) <<  8) |
-		(inreg8(addr + 0xc) <<  0);
-}
 
 static int liteeth_rx(struct net_device *netdev)
 {
@@ -104,8 +56,8 @@ static int liteeth_rx(struct net_device *netdev)
 	u8 rx_slot;
 	int len;
 
-	rx_slot = inreg8(priv->base + LITEETH_WRITER_SLOT);
-	len = inreg32(priv->base + LITEETH_WRITER_LENGTH);
+	rx_slot = litex_reg_readb(priv->base + LITEETH_WRITER_SLOT_OFF);
+	len = litex_reg_readl(priv->base + LITEETH_WRITER_LENGTH_OFF);
 
 	skb = netdev_alloc_skb(netdev, len + NET_IP_ALIGN);
 	if (!skb) {
@@ -139,16 +91,18 @@ static irqreturn_t liteeth_interrupt(int irq, void *dev_id)
 	struct liteeth *priv = netdev_priv(netdev);
 	u8 reg;
 
-	reg = inreg8(priv->base + LITEETH_READER_EV_PENDING);
+	reg = litex_reg_readb(priv->base + LITEETH_READER_EV_PENDING_OFF);
 	if (reg) {
 		liteeth_tx_done(netdev);
-		outreg8(reg, priv->base + LITEETH_READER_EV_PENDING);
+		litex_reg_writeb(priv->base + LITEETH_READER_EV_PENDING_OFF,
+				 reg);
 	}
 
-	reg = inreg8(priv->base + LITEETH_WRITER_EV_PENDING);
+	reg = litex_reg_readb(priv->base + LITEETH_WRITER_EV_PENDING_OFF);
 	if (reg) {
 		liteeth_rx(netdev);
-		outreg8(reg, priv->base + LITEETH_WRITER_EV_PENDING);
+		litex_reg_writeb(priv->base + LITEETH_WRITER_EV_PENDING_OFF,
+				 reg);
 	}
 
 	return IRQ_HANDLED;
@@ -181,13 +135,13 @@ static int liteeth_open(struct net_device *netdev)
 	}
 
 	/* Clear pending events? */
-	outreg8(1, priv->base + LITEETH_WRITER_EV_PENDING);
-	outreg8(1, priv->base + LITEETH_READER_EV_PENDING);
+	litex_reg_writeb(priv->base + LITEETH_WRITER_EV_PENDING_OFF, 1);
+	litex_reg_writeb(priv->base + LITEETH_READER_EV_PENDING_OFF, 1);
 
 	if (!priv->use_polling) {
 		/* Enable IRQs? */
-		outreg8(1, priv->base + LITEETH_WRITER_EV_ENABLE);
-		outreg8(1, priv->base + LITEETH_READER_EV_ENABLE);
+		litex_reg_writeb(priv->base + LITEETH_WRITER_EV_ENABLE_OFF, 1);
+		litex_reg_writeb(priv->base + LITEETH_READER_EV_ENABLE_OFF, 1);
 	}
 
 	netif_start_queue(netdev);
@@ -212,8 +166,8 @@ static int liteeth_stop(struct net_device *netdev)
 
 	del_timer_sync(&priv->poll_timer);
 
-	outreg8(0, priv->base + LITEETH_WRITER_EV_ENABLE);
-	outreg8(0, priv->base + LITEETH_READER_EV_ENABLE);
+	litex_reg_writeb(priv->base + LITEETH_WRITER_EV_ENABLE_OFF, 0);
+	litex_reg_writeb(priv->base + LITEETH_READER_EV_ENABLE_OFF, 0);
 
 	if (!priv->use_polling) {
 		free_irq(netdev->irq, netdev);
@@ -238,17 +192,17 @@ static int liteeth_start_xmit(struct sk_buff *skb, struct net_device *netdev)
 
 	txbuffer = priv->tx_base + priv->tx_slot * LITEETH_BUFFER_SIZE;
 	memcpy_fromio(txbuffer, skb->data, skb->len);
-	outreg8(priv->tx_slot, priv->base + LITEETH_READER_SLOT);
-	outreg16(skb->len, priv->base + LITEETH_READER_LENGTH);
+	litex_reg_writeb(priv->base + LITEETH_READER_SLOT_OFF, priv->tx_slot);
+	litex_reg_writew(priv->base + LITEETH_READER_LENGTH_OFF, skb->len);
 
-	ret = readb_poll_timeout_atomic(priv->base + LITEETH_READER_READY,
+	ret = readb_poll_timeout_atomic(priv->base + LITEETH_READER_READY_OFF,
 			val, val, 5, 1000);
 	if (ret == -ETIMEDOUT) {
 		netdev_err(netdev, "LITEETH_READER_READY timed out\n");
 		goto drop;
 	}
 
-	outreg8(1, priv->base + LITEETH_READER_START);
+	litex_reg_writeb(priv->base + LITEETH_READER_START_OFF, 1);
 
 	priv->tx_slot = (priv->tx_slot + 1) % priv->num_tx_slots;
 	dev_kfree_skb_any(skb);
@@ -286,11 +240,11 @@ static const struct ethtool_ops liteeth_ethtool_ops = {
 static void liteeth_reset_hw(struct liteeth *priv)
 {
 	/* Reset, twice */
-	outreg8(0, priv->base + LITEETH_PHY_CRG_RESET);
+	litex_reg_writeb(priv->base + LITEETH_PHY_CRG_RESET_OFF, 0);
 	udelay(10);
-	outreg8(1, priv->base + LITEETH_PHY_CRG_RESET);
+	litex_reg_writeb(priv->base + LITEETH_PHY_CRG_RESET_OFF, 1);
 	udelay(10);
-	outreg8(0, priv->base + LITEETH_PHY_CRG_RESET);
+	litex_reg_writeb(priv->base + LITEETH_PHY_CRG_RESET_OFF, 0);
 	udelay(10);
 }
 
@@ -303,6 +257,10 @@ static int liteeth_probe(struct platform_device *pdev)
 	struct liteeth *priv;
 	const char *mac_addr;
 	int irq, err;
+
+	/* defer probe if litex.h accessors are not ready */
+	if (!litex_check_accessors())
+		return -EPROBE_DEFER;
 
 	netdev = alloc_etherdev(sizeof(*priv));
 	if (!netdev)

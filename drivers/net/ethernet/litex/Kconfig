@@ -17,6 +17,7 @@ if NET_VENDOR_LITEX
 
 config LITEX_LITEETH
 	tristate "LiteX Ethernet support"
+	depends on LITEX_SOC_CONTROLLER
 	select NET_CORE
 	select MII
 	select PHYLIB
