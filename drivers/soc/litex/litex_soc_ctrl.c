@@ -24,7 +24,6 @@
 #define SCRATCH_REG_OFF     4
 #endif
 
-#define SCRATCH_REG_SIZE    sizeof(u32)
 #define SCRATCH_REG_VALUE   0x12345678
 #define SCRATCH_TEST_VALUE  0xdeadbeef
 
@@ -48,7 +47,7 @@ static int litex_check_csr_access(void __iomem *reg_addr)
 {
 	u32 reg;
 
-	reg = litex_get_reg(reg_addr + SCRATCH_REG_OFF, SCRATCH_REG_SIZE);
+	reg = litex_reg_readl(reg_addr + SCRATCH_REG_OFF);
 
 	if (reg != SCRATCH_REG_VALUE) {
 		panic("Scratch register read error! Expected: 0x%x, got: 0x%x",
@@ -56,9 +55,8 @@ static int litex_check_csr_access(void __iomem *reg_addr)
 		return -EINVAL;
 	}
 
-	litex_set_reg(reg_addr + SCRATCH_REG_OFF, SCRATCH_REG_SIZE,
-		      SCRATCH_TEST_VALUE);
-	reg = litex_get_reg(reg_addr + SCRATCH_REG_OFF, SCRATCH_REG_SIZE);
+	litex_reg_writel(reg_addr + SCRATCH_REG_OFF, SCRATCH_TEST_VALUE);
+	reg = litex_reg_readl(reg_addr + SCRATCH_REG_OFF);
 
 	if (reg != SCRATCH_TEST_VALUE) {
 		panic("Scratch register write error! Expected: 0x%x, got: 0x%x",
@@ -67,8 +65,7 @@ static int litex_check_csr_access(void __iomem *reg_addr)
 	}
 
 	/* restore original value of the SCRATCH register */
-	litex_set_reg(reg_addr + SCRATCH_REG_OFF, SCRATCH_REG_SIZE,
-		      SCRATCH_REG_VALUE);
+	litex_reg_writel(reg_addr + SCRATCH_REG_OFF, SCRATCH_REG_VALUE);
 
 	/* Set flag for other drivers */
 	accessors_ok = 1;
