@@ -2,13 +2,22 @@
 #ifndef _LINUX_LITEX_H
 #define _LINUX_LITEX_H
 
-#include <linux/io.h>
-#include <linux/types.h>
-#include <linux/compiler_types.h>
+#include <asm/io.h>
 
-#define LITEX_REG_SIZE             0x4
-#define LITEX_SUBREG_SIZE          0x1
-#define LITEX_SUBREG_SIZE_BIT      (LITEX_SUBREG_SIZE * 8)
+#if defined(CONFIG_LITEX_SUBREG_SIZE) && \
+    (CONFIG_LITEX_SUBREG_SIZE == 1 || CONFIG_LITEX_SUBREG_SIZE == 4)
+#define LITEX_SUBREG_SIZE      CONFIG_LITEX_SUBREG_SIZE
+#else
+#error LiteX subregister size (LITEX_SUBREG_SIZE) must be 4 or 1!
+#endif
+
+#ifdef CONFIG_64BIT
+#define LITEX_SUBREG_ALIGN     8
+#else
+#define LITEX_SUBREG_ALIGN     4
+#endif
+
+#define LITEX_SUBREG_SIZE_BIT  (LITEX_SUBREG_SIZE * 8)
 
 // function implemented in
 // drivers/soc/litex/litex_soc_controller.c
@@ -25,46 +34,62 @@
 //     return -EPROBE_DEFER;
 int litex_check_accessors(void);
 
-static inline u32 read_pointer_with_barrier(const volatile void __iomem *addr)
+static inline ulong _rd_ptr_w_barrier(const volatile void __iomem *addr)
 {
-    u32 val;
-    __io_br();
-    val = *(const volatile u32 __force *)addr;
-    __io_ar();
-    return val;
+	ulong val;
+
+	__io_br();
+	val = *(const volatile ulong __force *)addr;
+	__io_ar();
+	return val;
 }
 
-static inline void write_pointer_with_barrier(volatile void __iomem *addr, u32 val)
+static inline void _wr_ptr_w_barrier(volatile void __iomem *addr, ulong value)
 {
-    __io_br();
-    *(volatile u32 __force *)addr = val;
-    __io_ar();
+	__io_br();
+	*(volatile ulong __force *)addr = value;
+	__io_ar();
 }
 
-// Helper functions for manipulating LiteX registers
-static inline void litex_set_reg(void __iomem *reg, u32 reg_size, u32 val)
-{
-	u32 shifted_data, shift, i;
+/* number of LiteX subregisters needed to store a register of given reg_size */
+#define _litex_num_subregs(reg_size) \
+	(((reg_size) - 1) / LITEX_SUBREG_SIZE + 1)
 
-	for (i = 0; i < reg_size; ++i) {
-		shift = ((reg_size - i - 1) * LITEX_SUBREG_SIZE_BIT);
-		shifted_data = val >> shift;
-		write_pointer_with_barrier(reg + (LITEX_REG_SIZE * i), shifted_data);
+/* read a LiteX register of a given reg_size, located at address a */
+static inline u64 _litex_rd_reg(void __iomem *a, u32 reg_size)
+{
+	u32 i;
+	u64 r;
+
+	r = _rd_ptr_w_barrier(a);
+	for (i = 1; i < _litex_num_subregs(reg_size); i++) {
+		r <<= LITEX_SUBREG_SIZE_BIT;
+		r |= _rd_ptr_w_barrier(a + i * LITEX_SUBREG_ALIGN);
+	}
+	return r;
+}
+
+/* write value v to a LiteX register of given reg_size, located at address a */
+static inline void _litex_wr_reg(void __iomem *a, u32 reg_size, u64 v)
+{
+	u32 i, ns;
+
+	ns = _litex_num_subregs(reg_size);
+	for (i = 0; i < ns; i++) {
+		_wr_ptr_w_barrier(a + i * LITEX_SUBREG_ALIGN,
+				  v >> (LITEX_SUBREG_SIZE_BIT * (ns - 1 - i)));
 	}
 }
 
-static inline u32 litex_get_reg(void __iomem *reg, u32 reg_size)
+// for backward compatibility with linux-on-litex-vexriscv existing modules
+static inline void litex_set_reg(void __iomem *reg, u32 reg_size, ulong val)
 {
-	u32 shifted_data, shift, i;
-	u32 result = 0;
+	_litex_wr_reg(reg, reg_size, val);
+}
 
-	for (i = 0; i < reg_size; ++i) {
-		shifted_data = read_pointer_with_barrier(reg + (LITEX_REG_SIZE * i));
-		shift = ((reg_size - i - 1) * LITEX_SUBREG_SIZE_BIT);
-		result |= (shifted_data << shift);
-	}
-
-	return result;
+static inline ulong litex_get_reg(void __iomem *reg, u32 reg_size)
+{
+	return _litex_rd_reg(reg, reg_size);
 }
 
 #endif /* _LINUX_LITEX_H */

@@ -72,7 +72,8 @@ static int litex_check_csr_access(void __iomem *reg_addr)
 
 	/* Set flag for other drivers */
 	accessors_ok = 1;
-	pr_info("LiteX SoC Controller driver initialized");
+	pr_info("LiteX SoC Controller driver initialized: subreg=%d, align=%d",
+		LITEX_SUBREG_SIZE, LITEX_SUBREG_ALIGN);
 
 	return 0;
 }
