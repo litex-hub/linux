@@ -81,6 +81,47 @@ static inline void _litex_wr_reg(void __iomem *a, u32 reg_size, u64 v)
 	}
 }
 
+/* helper accessors for standard unsigned integer widths (b/w/l/q) */
+static inline u8 litex_reg_readb(void __iomem *a)
+{
+	return _litex_rd_reg(a, sizeof(u8));
+}
+
+static inline u16 litex_reg_readw(void __iomem *a)
+{
+	return _litex_rd_reg(a, sizeof(u16));
+}
+
+static inline u32 litex_reg_readl(void __iomem *a)
+{
+	return _litex_rd_reg(a, sizeof(u32));
+}
+
+static inline u64 litex_reg_readq(void __iomem *a)
+{
+	return _litex_rd_reg(a, sizeof(u64));
+}
+
+static inline void litex_reg_writeb(void __iomem *a, u8 v)
+{
+	_litex_wr_reg(a, sizeof(u8), v);
+}
+
+static inline void litex_reg_writew(void __iomem *a, u16 v)
+{
+	_litex_wr_reg(a, sizeof(u16), v);
+}
+
+static inline void litex_reg_writel(void __iomem *a, u32 v)
+{
+	_litex_wr_reg(a, sizeof(u32), v);
+}
+
+static inline void litex_reg_writeq(void __iomem *a, u64 v)
+{
+	_litex_wr_reg(a, sizeof(u64), v);
+}
+
 // for backward compatibility with linux-on-litex-vexriscv existing modules
 static inline void litex_set_reg(void __iomem *reg, u32 reg_size, ulong val)
 {
