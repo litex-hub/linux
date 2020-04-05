@@ -55,6 +55,10 @@ static inline void _wr_ptr_w_barrier(volatile void __iomem *addr, ulong value)
 #define _litex_num_subregs(reg_size) \
 	(((reg_size) - 1) / LITEX_SUBREG_SIZE + 1)
 
+/* offset of a LiteX register based on offset and size of preceding register */
+#define _next_reg_off(off, size) \
+	((off) + _litex_num_subregs(size) * LITEX_SUBREG_ALIGN)
+
 /* read a LiteX register of a given reg_size, located at address a */
 static inline u64 _litex_rd_reg(void __iomem *a, u32 reg_size)
 {
