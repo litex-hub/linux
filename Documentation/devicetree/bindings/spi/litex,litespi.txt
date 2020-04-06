@@ -15,5 +15,5 @@ litespi0: spi@f0005800 {
 
 	litespi,max-bpw = <8>;
 	litespi,sck-frequency = <1000000>;
-	litespi,num-cs = <2>;
+	litespi,num-cs = <1>;
 };

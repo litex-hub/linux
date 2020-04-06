@@ -398,8 +398,8 @@ config SPI_LITESPI
 	tristate "LiteSPI SPI master driver"
 	depends on OF && LITEX_SOC_CONTROLLER
 	help
-	  This enables support for the LiteSPI SPI master controller of the LiteX
-	  FPGA SoC builder.
+	  This enables support for LiteSPI, the SPI master controller of
+	  the LiteX FPGA SoC builder.
 
 config SPI_LM70_LLP
 	tristate "Parallel port adapter for LM70 eval board (DEVELOPMENT)"
