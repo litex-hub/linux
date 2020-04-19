@@ -51,23 +51,14 @@ static inline void litespi_wait_xfer_end(struct litespi_hw *hw)
 
 static void litespi_rxtx(struct litespi_hw *hw, struct spi_transfer *t)
 {
-	u64 val;
-	u32 bytes;
 	int i;
+	u16 val;
+	const u8 *tx = t->tx_buf;
+	u8 *rx = t->rx_buf;
 
-	/*
-	 * Calculate number of bytes necessary for given bits_per_word value.
-	 * Incrementing by 7 forces non-multiplies of 8 to be incremented by 1
-	 * after bit shifting, without changing the result for multiplies of 8.
-	 */
-	bytes = (t->bits_per_word + 7) >> 3;
-
-	for (i = 0; i < t->len; i += bytes) {
-		if (t->tx_buf) {
-			memcpy(&val, t->tx_buf, bytes);
-			_litex_wr_reg(hw->base_addr + LITESPI_OFF_MOSI, bytes,
-				      val);
-			t->tx_buf += bytes;
+	for (i = 0; i < t->len; i++) {
+		if (tx) {
+			litex_reg_writeb(hw->base_addr + LITESPI_OFF_MOSI, *tx++);
 		}
 
 		val = litex_reg_readw(hw->base_addr + LITESPI_OFF_CTRL);
@@ -75,11 +66,8 @@ static void litespi_rxtx(struct litespi_hw *hw, struct spi_transfer *t)
 				 val | BIT(LITESPI_CTRL_START_BIT));
 		litespi_wait_xfer_end(hw);
 
-		if (t->rx_buf) {
-			val = _litex_rd_reg(hw->base_addr + LITESPI_OFF_MISO,
-					    bytes);
-			memcpy(t->rx_buf, &val, bytes);
-			t->rx_buf += bytes;
+		if (rx) {
+			*rx++ = litex_reg_readb(hw->base_addr + LITESPI_OFF_MISO);
 		}
 	}
 }
@@ -154,7 +142,7 @@ static int litespi_probe(struct platform_device *pdev)
 	hw->master->dev.of_node = pdev->dev.of_node;
 	hw->master->setup = litespi_setup;
 	hw->master->transfer_one_message = litespi_xfer_one;
-	hw->master->mode_bits =	SPI_MODE_0;
+	hw->master->mode_bits =	SPI_MODE_0 | SPI_CS_HIGH;
 	hw->master->flags = SPI_CONTROLLER_MUST_RX | SPI_CONTROLLER_MUST_TX;
 
 	/* get bits per word property */
@@ -169,7 +157,6 @@ static int litespi_probe(struct platform_device *pdev)
 	if (ret)
 		return -EINVAL;
 
-	hw->master->min_speed_hz = val;
 	hw->master->max_speed_hz = val;
 
 	/* get num cs */
