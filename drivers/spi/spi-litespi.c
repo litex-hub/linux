@@ -39,13 +39,13 @@
 
 struct litespi_hw {
 	struct spi_master *master;
-	void __iomem *base_addr;
+	void __iomem *base;
 	struct mutex bus_mutex;
 };
 
 static inline void litespi_wait_xfer_end(struct litespi_hw *hw)
 {
-	while (!litex_reg_readb(hw->base_addr + LITESPI_OFF_STAT))
+	while (!litex_reg_readb(hw->base + LITESPI_OFF_STAT))
 		cpu_relax();
 }
 
@@ -58,16 +58,16 @@ static void litespi_rxtx(struct litespi_hw *hw, struct spi_transfer *t)
 
 	for (i = 0; i < t->len; i++) {
 		if (tx) {
-			litex_reg_writeb(hw->base_addr + LITESPI_OFF_MOSI, *tx++);
+			litex_reg_writeb(hw->base + LITESPI_OFF_MOSI, *tx++);
 		}
 
-		val = litex_reg_readw(hw->base_addr + LITESPI_OFF_CTRL);
-		litex_reg_writew(hw->base_addr + LITESPI_OFF_CTRL,
+		val = litex_reg_readw(hw->base + LITESPI_OFF_CTRL);
+		litex_reg_writew(hw->base + LITESPI_OFF_CTRL,
 				 val | BIT(LITESPI_CTRL_START_BIT));
 		litespi_wait_xfer_end(hw);
 
 		if (rx) {
-			*rx++ = litex_reg_readb(hw->base_addr + LITESPI_OFF_MISO);
+			*rx++ = litex_reg_readb(hw->base + LITESPI_OFF_MISO);
 		}
 	}
 }
@@ -80,7 +80,7 @@ static int litespi_xfer_one(struct spi_master *master, struct spi_message *m)
 	mutex_lock(&hw->bus_mutex);
 
 	/* setup chip select */
-	litex_reg_writeb(hw->base_addr + LITESPI_OFF_CS,
+	litex_reg_writeb(hw->base + LITESPI_OFF_CS,
 			 BIT(m->spi->chip_select));
 
 	list_for_each_entry(t, &m->transfers, transfer_list) {
@@ -105,7 +105,7 @@ static int litespi_setup(struct spi_device *spi)
 	litespi_wait_xfer_end(hw);
 
 	/* set word size and clear CS bits */
-	litex_reg_writew(hw->base_addr + LITESPI_OFF_CTRL,
+	litex_reg_writew(hw->base + LITESPI_OFF_CTRL,
 			 spi->bits_per_word << LITESPI_CTRL_SHIFT_BPW);
 
 	mutex_unlock(&hw->bus_mutex);
@@ -168,8 +168,8 @@ static int litespi_probe(struct platform_device *pdev)
 
 	/* get base address */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	hw->base_addr = devm_ioremap_resource(&pdev->dev, res);
-	if (!hw->base_addr)
+	hw->base = devm_ioremap_resource(&pdev->dev, res);
+	if (!hw->base)
 		return -ENXIO;
 
 	/* register controller */
