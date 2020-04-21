@@ -115,9 +115,9 @@ static int litespi_setup(struct spi_device *spi)
 
 static int litespi_probe(struct platform_device *pdev)
 {
+	struct device_node *node = pdev->dev.of_node;
 	struct litespi_hw *hw;
 	struct spi_master *master;
-	struct device_node *np;
 	struct resource *res;
 	int ret;
 	u32 val;
@@ -125,61 +125,61 @@ static int litespi_probe(struct platform_device *pdev)
 	if (!litex_check_accessors())
 		return -EPROBE_DEFER;
 
-	/* check if device tree exists */
-	np = pdev->dev.of_node;
-	if (!np)
-		return -ENODEV;
-
-	/* allocate memory for master */
 	master = spi_alloc_master(&pdev->dev, sizeof(*hw));
 	if (!master)
 		return -ENOMEM;
+
+	master->dev.of_node = pdev->dev.of_node;
+	master->bus_num = pdev->id;
+	master->setup = litespi_setup;
+	master->transfer_one_message = litespi_xfer_one;
+	master->mode_bits = SPI_MODE_0 | SPI_CS_HIGH;
+	master->flags = SPI_CONTROLLER_MUST_RX | SPI_CONTROLLER_MUST_TX;
+
+	/* get bits per word property */
+	ret = of_property_read_u32(node, "litespi,max-bpw", &val);
+	if (ret)
+		goto err;
+	if (val > LITEX_SUBREG_SIZE * 8) {
+		ret = -EINVAL;
+		goto err;
+	}
+	master->bits_per_word_mask = SPI_BPW_RANGE_MASK(1, val);
+
+	/* get sck frequency */
+	ret = of_property_read_u32(node, "litespi,sck-frequency", &val);
+	if (ret)
+		goto err;
+	master->max_speed_hz = val;
+
+	/* get num cs */
+	ret = of_property_read_u32(node, "litespi,num-cs", &val);
+	if (ret)
+		goto err;
+	master->num_chipselect = val;
 
 	hw = spi_master_get_devdata(master);
 	hw->master = master;
 	mutex_init(&hw->bus_mutex);
 
-	hw->master->dev.of_node = pdev->dev.of_node;
-	hw->master->setup = litespi_setup;
-	hw->master->transfer_one_message = litespi_xfer_one;
-	hw->master->mode_bits =	SPI_MODE_0 | SPI_CS_HIGH;
-	hw->master->flags = SPI_CONTROLLER_MUST_RX | SPI_CONTROLLER_MUST_TX;
-
-	/* get bits per word property */
-	ret = of_property_read_u32(np, "litespi,max-bpw", &val);
-	if (ret || val > LITEX_SUBREG_SIZE * 8)
-		return -EINVAL;
-
-	hw->master->bits_per_word_mask = SPI_BPW_RANGE_MASK(1, val);
-
-	/* get sck frequency */
-	ret = of_property_read_u32(np, "litespi,sck-frequency", &val);
-	if (ret)
-		return -EINVAL;
-
-	hw->master->max_speed_hz = val;
-
-	/* get num cs */
-	ret = of_property_read_u32(np, "litespi,num-cs", &val);
-	if (ret)
-		return -EINVAL;
-
-	hw->master->num_chipselect = val;
-
 	/* get base address */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	hw->base = devm_ioremap_resource(&pdev->dev, res);
-	if (!hw->base)
-		return -ENXIO;
+	if (IS_ERR(hw->base)) {
+		ret = PTR_ERR(hw->base);
+		goto err;
+	}
 
 	/* register controller */
 	ret = devm_spi_register_master(&pdev->dev, master);
-	if (ret < 0) {
-		spi_master_put(master);
-		return ret;
-	}
+	if (ret)
+		goto err;
 
 	return 0;
+
+err:
+	spi_master_put(master);
+	return ret;
 }
 
 static const struct of_device_id litespi_match[] = {
