@@ -49,25 +49,64 @@ static inline void litespi_wait_xfer_end(struct litespi_hw *hw)
 		cpu_relax();
 }
 
+static inline void litespi_ctrl_start(struct litespi_hw *hw)
+{
+	u16 val = litex_reg_readw(hw->base + LITESPI_OFF_CTRL);
+
+	val |= BIT(LITESPI_CTRL_START_BIT);
+	litex_reg_writew(hw->base + LITESPI_OFF_CTRL, val);
+	litespi_wait_xfer_end(hw);
+}
+
 static void litespi_rxtx(struct litespi_hw *hw, struct spi_transfer *t)
 {
 	int i;
-	u16 val;
-	const u8 *tx = t->tx_buf;
-	u8 *rx = t->rx_buf;
 
-	for (i = 0; i < t->len; i++) {
-		if (tx) {
-			litex_reg_writeb(hw->base + LITESPI_OFF_MOSI, *tx++);
+	/*
+	 * Validated SPI transfer length is multiple of SPI word size, which
+	 * is itself a power-of-two multiple, and fits within LITEX_SUBREG_SIZE
+	 */
+	if (t->bits_per_word <= 8) {
+		const u8 *tx = t->tx_buf;
+		u8 *rx = t->rx_buf;
+
+		/* word size is 1 byte */
+		for (i = 0; i < t->len; i++) {
+			if (tx)
+				litex_reg_writeb(hw->base +
+						 LITESPI_OFF_MOSI, *tx++);
+			litespi_ctrl_start(hw);
+			if (rx)
+				*rx++ = litex_reg_readb(hw->base +
+							LITESPI_OFF_MISO);
 		}
+	} else if (t->bits_per_word <= 16) {
+		const u16 *tx = t->tx_buf;
+		u16 *rx = t->rx_buf;
 
-		val = litex_reg_readw(hw->base + LITESPI_OFF_CTRL);
-		litex_reg_writew(hw->base + LITESPI_OFF_CTRL,
-				 val | BIT(LITESPI_CTRL_START_BIT));
-		litespi_wait_xfer_end(hw);
+		/* word size is 2 bytes */
+		for (i = 0; i < t->len / 2; i++) {
+			if (tx)
+				litex_reg_writew(hw->base + LITESPI_OFF_MOSI,
+						 be16_to_cpu(*tx++));
+			litespi_ctrl_start(hw);
+			if (rx)
+				*rx++ = cpu_to_be16(litex_reg_readw(
+						hw->base + LITESPI_OFF_MISO));
+		}
+	} else {
+		const u32 *tx = t->tx_buf;
+		u32 *rx = t->rx_buf;
 
-		if (rx) {
-			*rx++ = litex_reg_readb(hw->base + LITESPI_OFF_MISO);
+		/* word size is 4 bytes */
+		for (i = 0; i < t->len / 4; i++) {
+			if (tx)
+				litex_reg_writel(hw->base + LITESPI_OFF_MOSI,
+						 be32_to_cpu(*tx++));
+			litespi_ctrl_start(hw);
+			if (rx)
+				*rx++ = cpu_to_be32(litex_reg_readl(
+						hw->base + LITESPI_OFF_MISO));
 		}
 	}
 }
