@@ -8,9 +8,7 @@
 #include <linux/device.h>
 #include <linux/litex.h>
 #include <linux/module.h>
-#include <linux/mutex.h>
 #include <linux/of.h>
-#include <linux/of_platform.h>
 #include <linux/platform_device.h>
 #include <linux/spi/spi.h>
 
@@ -40,7 +38,6 @@
 struct litespi_hw {
 	struct spi_master *master;
 	void __iomem *base;
-	struct mutex bus_mutex;
 };
 
 static inline void litespi_wait_xfer_end(struct litespi_hw *hw)
@@ -49,18 +46,21 @@ static inline void litespi_wait_xfer_end(struct litespi_hw *hw)
 		cpu_relax();
 }
 
-static inline void litespi_ctrl_start(struct litespi_hw *hw)
+static int litespi_rxtx(struct spi_master *master, struct spi_device *spi,
+			struct spi_transfer *t)
 {
-	u16 val = litex_reg_readw(hw->base + LITESPI_OFF_CTRL);
-
-	val |= BIT(LITESPI_CTRL_START_BIT);
-	litex_reg_writew(hw->base + LITESPI_OFF_CTRL, val);
-	litespi_wait_xfer_end(hw);
-}
-
-static void litespi_rxtx(struct litespi_hw *hw, struct spi_transfer *t)
-{
+	struct litespi_hw *hw = spi_master_get_devdata(master);
+	u16 ctl_word = t->bits_per_word << LITESPI_CTRL_SHIFT_BPW;
 	int i;
+
+	/* set chip select */
+	litex_reg_writeb(hw->base + LITESPI_OFF_CS, BIT(spi->chip_select));
+
+	/* set word size */
+	litex_reg_writew(hw->base + LITESPI_OFF_CTRL, ctl_word);
+
+	/* add start bit to ctl_word */
+	ctl_word |= BIT(LITESPI_CTRL_START_BIT);
 
 	/*
 	 * Validated SPI transfer length is multiple of SPI word size, which
@@ -75,7 +75,10 @@ static void litespi_rxtx(struct litespi_hw *hw, struct spi_transfer *t)
 			if (tx)
 				litex_reg_writeb(hw->base +
 						 LITESPI_OFF_MOSI, *tx++);
-			litespi_ctrl_start(hw);
+
+			litex_reg_writew(hw->base + LITESPI_OFF_CTRL, ctl_word);
+			litespi_wait_xfer_end(hw);
+
 			if (rx)
 				*rx++ = litex_reg_readb(hw->base +
 							LITESPI_OFF_MISO);
@@ -89,7 +92,10 @@ static void litespi_rxtx(struct litespi_hw *hw, struct spi_transfer *t)
 			if (tx)
 				litex_reg_writew(hw->base + LITESPI_OFF_MOSI,
 						 be16_to_cpu(*tx++));
-			litespi_ctrl_start(hw);
+
+			litex_reg_writew(hw->base + LITESPI_OFF_CTRL, ctl_word);
+			litespi_wait_xfer_end(hw);
+
 			if (rx)
 				*rx++ = cpu_to_be16(litex_reg_readw(
 						hw->base + LITESPI_OFF_MISO));
@@ -103,51 +109,15 @@ static void litespi_rxtx(struct litespi_hw *hw, struct spi_transfer *t)
 			if (tx)
 				litex_reg_writel(hw->base + LITESPI_OFF_MOSI,
 						 be32_to_cpu(*tx++));
-			litespi_ctrl_start(hw);
+
+			litex_reg_writew(hw->base + LITESPI_OFF_CTRL, ctl_word);
+			litespi_wait_xfer_end(hw);
+
 			if (rx)
 				*rx++ = cpu_to_be32(litex_reg_readl(
 						hw->base + LITESPI_OFF_MISO));
 		}
 	}
-}
-
-static int litespi_xfer_one(struct spi_master *master, struct spi_message *m)
-{
-	struct litespi_hw *hw = spi_master_get_devdata(master);
-	struct spi_transfer *t;
-
-	mutex_lock(&hw->bus_mutex);
-
-	/* setup chip select */
-	litex_reg_writeb(hw->base + LITESPI_OFF_CS,
-			 BIT(m->spi->chip_select));
-
-	list_for_each_entry(t, &m->transfers, transfer_list) {
-		litespi_rxtx(hw, t);
-		m->actual_length += t->len;
-	}
-
-	m->status = 0;
-	spi_finalize_current_message(master);
-
-	mutex_unlock(&hw->bus_mutex);
-
-	return 0;
-}
-
-static int litespi_setup(struct spi_device *spi)
-{
-	struct litespi_hw *hw = spi_master_get_devdata(spi->master);
-
-	/* lock and wait for transfer finish */
-	mutex_lock(&hw->bus_mutex);
-	litespi_wait_xfer_end(hw);
-
-	/* set word size and clear CS bits */
-	litex_reg_writew(hw->base + LITESPI_OFF_CTRL,
-			 spi->bits_per_word << LITESPI_CTRL_SHIFT_BPW);
-
-	mutex_unlock(&hw->bus_mutex);
 
 	return 0;
 }
@@ -170,8 +140,7 @@ static int litespi_probe(struct platform_device *pdev)
 
 	master->dev.of_node = pdev->dev.of_node;
 	master->bus_num = pdev->id;
-	master->setup = litespi_setup;
-	master->transfer_one_message = litespi_xfer_one;
+	master->transfer_one = litespi_rxtx;
 	master->mode_bits = SPI_MODE_0 | SPI_CS_HIGH;
 	master->flags = SPI_CONTROLLER_MUST_RX | SPI_CONTROLLER_MUST_TX;
 
@@ -199,7 +168,6 @@ static int litespi_probe(struct platform_device *pdev)
 
 	hw = spi_master_get_devdata(master);
 	hw->master = master;
-	mutex_init(&hw->bus_mutex);
 
 	/* get base address */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
