@@ -34,21 +34,22 @@
 //     return -EPROBE_DEFER;
 int litex_check_accessors(void);
 
-static inline ulong _rd_ptr_w_barrier(const volatile void __iomem *addr)
+static inline ulong _readu_cpu(const volatile void __iomem *addr)
 {
-	ulong val;
-
-	__io_br();
-	val = *(const volatile ulong __force *)addr;
-	__io_ar();
-	return val;
+#ifdef CONFIG_64BIT
+	return cpu_to_le64(readq(addr));
+#else
+	return cpu_to_le32(readl(addr));
+#endif
 }
 
-static inline void _wr_ptr_w_barrier(volatile void __iomem *addr, ulong value)
+static inline void _writeu_cpu(volatile void __iomem *addr, ulong value)
 {
-	__io_br();
-	*(volatile ulong __force *)addr = value;
-	__io_ar();
+#ifdef CONFIG_64BIT
+	writeq(le64_to_cpu(value), addr);
+#else
+	writel(le32_to_cpu(value), addr);
+#endif
 }
 
 /* number of LiteX subregisters needed to store a register of given reg_size */
@@ -65,10 +66,10 @@ static inline u64 _litex_rd_reg(void __iomem *a, u32 reg_size)
 	u32 i;
 	u64 r;
 
-	r = _rd_ptr_w_barrier(a);
+	r = _readu_cpu(a);
 	for (i = 1; i < _litex_num_subregs(reg_size); i++) {
 		r <<= LITEX_SUBREG_SIZE_BIT;
-		r |= _rd_ptr_w_barrier(a + i * LITEX_SUBREG_ALIGN);
+		r |= _readu_cpu(a + i * LITEX_SUBREG_ALIGN);
 	}
 	return r;
 }
@@ -80,8 +81,8 @@ static inline void _litex_wr_reg(void __iomem *a, u32 reg_size, u64 v)
 
 	ns = _litex_num_subregs(reg_size);
 	for (i = 0; i < ns; i++) {
-		_wr_ptr_w_barrier(a + i * LITEX_SUBREG_ALIGN,
-				  v >> (LITEX_SUBREG_SIZE_BIT * (ns - 1 - i)));
+		_writeu_cpu(a + i * LITEX_SUBREG_ALIGN,
+			    v >> (LITEX_SUBREG_SIZE_BIT * (ns - 1 - i)));
 	}
 }
 
