@@ -194,7 +194,7 @@ static void read_data(struct spi_nor *nor, u8 *buffer, int len)
 }
 
 static int spi_flash_nor_read_reg(struct spi_nor *nor, u8 opcode, u8 *buf,
-		int len)
+				  size_t len)
 {
 	write_command(nor, opcode);
 	read_data(nor, buf, len);
@@ -278,8 +278,8 @@ static ssize_t spi_flash_nor_write(struct spi_nor *nor, loff_t to, size_t len,
 	return len;
 }
 
-static ssize_t spi_flash_nor_write_reg(struct spi_nor *nor, u8 opcode, u8 *buf,
-			     int len)
+static ssize_t spi_flash_nor_write_reg(struct spi_nor *nor, u8 opcode,
+				       const u8 *buf, size_t len)
 {
 	/* Write WRITE ENABLE command*/
 	write_command(nor, WRITE_ENABLE);
@@ -297,6 +297,14 @@ static ssize_t spi_flash_nor_write_reg(struct spi_nor *nor, u8 opcode, u8 *buf,
 
 	return 0;
 }
+
+static const struct spi_nor_controller_ops litex_spi_controller_ops = {
+	.read = spi_flash_nor_read,
+	.write = spi_flash_nor_write,
+	.read_reg = spi_flash_nor_read_reg,
+	.write_reg = spi_flash_nor_write_reg,
+	.erase = spi_flash_nor_erase,
+};
 
 static int litex_spi_flash_probe(struct platform_device *pdev)
 {
@@ -345,11 +353,7 @@ static int litex_spi_flash_probe(struct platform_device *pdev)
 	/* Sets initial configuration of registers */
 	initial_config(nor);
 	/* Fill the hooks to spi nor */
-	nor->read = spi_flash_nor_read;
-	nor->read_reg = spi_flash_nor_read_reg;
-	nor->write = spi_flash_nor_write;
-	nor->write_reg = spi_flash_nor_write_reg;
-	nor->erase = spi_flash_nor_erase;
+	nor->controller_ops = &litex_spi_controller_ops;
 	nor->mtd.name = "spi";
 
 	ret = spi_nor_scan(nor, NULL, &hwcaps);
