@@ -26,15 +26,15 @@ struct litex_vexriscv_intc {
 
 static unsigned int litex_vexriscv_irq_getie(void)
 {
-	return (csr_read(sstatus) & SIE_SSIE) != 0;
+	return (csr_read(sstatus) & IE_SIE) != 0;
 }
 
 static void litex_vexriscv_irq_setie(unsigned int ie)
 {
 	if (ie)
-		csr_write(sstatus, SIE_SSIE);
+		csr_write(sstatus, IE_SIE);
 	else
-		csr_clear(sstatus, SIE_SSIE);
+		csr_clear(sstatus, IE_SIE);
 }
 
 static unsigned int litex_vexriscv_irq_getmask(void)
