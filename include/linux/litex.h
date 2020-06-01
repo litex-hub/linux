@@ -11,11 +11,7 @@
 #error LiteX subregister size (LITEX_SUBREG_SIZE) must be 4 or 1!
 #endif
 
-#ifdef CONFIG_64BIT
-#define LITEX_SUBREG_ALIGN     8
-#else
 #define LITEX_SUBREG_ALIGN     4
-#endif
 
 #define LITEX_SUBREG_SIZE_BIT  (LITEX_SUBREG_SIZE * 8)
 
@@ -36,20 +32,12 @@ int litex_check_accessors(void);
 
 static inline ulong _readu_cpu(const volatile void __iomem *addr)
 {
-#ifdef CONFIG_64BIT
-	return cpu_to_le64(readq(addr));
-#else
 	return cpu_to_le32(readl(addr));
-#endif
 }
 
 static inline void _writeu_cpu(volatile void __iomem *addr, ulong value)
 {
-#ifdef CONFIG_64BIT
-	writeq(le64_to_cpu(value), addr);
-#else
 	writel(le32_to_cpu(value), addr);
-#endif
 }
 
 /* number of LiteX subregisters needed to store a register of given reg_size */

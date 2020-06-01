@@ -17,12 +17,8 @@
 #include <linux/errno.h>
 #include <linux/io.h>
 
-/* scratch register located one CPU x-len past the base address */
-#ifdef CONFIG_64BIT
-#define SCRATCH_REG_OFF     8
-#else
+/* scratch register located one "simple CSR" past the base address */
 #define SCRATCH_REG_OFF     4
-#endif
 
 #define SCRATCH_REG_VALUE   0x12345678
 #define SCRATCH_TEST_VALUE  0xdeadbeef
