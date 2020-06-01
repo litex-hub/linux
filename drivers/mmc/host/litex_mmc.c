@@ -51,7 +51,7 @@ struct sdcore_regs {
 	u32 argument[4];
 	u32 command[4];
 	u32 issue_cmd[1];
-	u32 response[17];
+	u32 response[16];
 	u32 cmdevt[4];
 	u32 dataevt[4];
 	u32 blocksize[2];
@@ -152,8 +152,6 @@ void sdclk_set_clk(struct device *dev, unsigned int clk_freq)
 }
 
 
-//TODO: Max length of response should be 16 bytes, but due to a bug in litesdcard,
-//LONG response is 17 bytes long, we are skipping here the last byte
 static void litex_mmc_read_rsp(struct litex_mmc_host *host, u32 resp[4])
 {
 	static const u8 reg_size = sizeof(host->regs.sdcore->response) / 4;
@@ -163,10 +161,10 @@ static void litex_mmc_read_rsp(struct litex_mmc_host *host, u32 resp[4])
 
 	resp[0] = resp[1] = resp[2] = resp[3] = 0;
 
-	for (i = 0; i < reg_size - 1; i++) {
+	for (i = 0; i < reg_size; i++) {
 		offset = reg_size - 1 - i;
 		value = ioread32(&host->regs.sdcore->response[offset]) & 0xFF;
-		resp[3 - i / 4] |= value << (8 * (i % 4));
+		resp[(sizeof(*resp) - 1) - i / 4] |= value << (8 * (i % 4));
 	}
 }
 
