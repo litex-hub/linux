@@ -57,7 +57,8 @@ static inline u64 _litex_rd_reg(void __iomem *a, u32 reg_size)
 	r = _readu_cpu(a);
 	for (i = 1; i < _litex_num_subregs(reg_size); i++) {
 		r <<= LITEX_SUBREG_SIZE_BIT;
-		r |= _readu_cpu(a + i * LITEX_SUBREG_ALIGN);
+		a += LITEX_SUBREG_ALIGN;
+		r |= _readu_cpu(a);
 	}
 	return r;
 }
@@ -69,8 +70,8 @@ static inline void _litex_wr_reg(void __iomem *a, u32 reg_size, u64 v)
 
 	ns = _litex_num_subregs(reg_size);
 	for (i = 0; i < ns; i++) {
-		_writeu_cpu(a + i * LITEX_SUBREG_ALIGN,
-			    v >> (LITEX_SUBREG_SIZE_BIT * (ns - 1 - i)));
+		_writeu_cpu(a, v >> (LITEX_SUBREG_SIZE_BIT * (ns - 1 - i)));
+		a += LITEX_SUBREG_ALIGN;
 	}
 }
 
