@@ -121,11 +121,11 @@ config SPI_STM32_QUADSPI
 	  We only connect the NOR to this controller.
 
 config SPI_FLASH_LITEX
-	tristate "LiteX SPI Flash support"
+	tristate "LiteX SPI Flash bitbang support"
 	depends on OF
 	depends on HAS_IOMEM
 	depends on LITEX_SOC_CONTROLLER
 	help
-	  Generic SPI Flash driver for LiteX
+	  Generic SPI Flash bitbang driver for LiteX
 
 endif # MTD_SPI_NOR
