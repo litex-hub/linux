@@ -11,3 +11,4 @@ obj-$(CONFIG_SPI_INTEL_SPI_PCI)	+= intel-spi-pci.o
 obj-$(CONFIG_SPI_INTEL_SPI_PLATFORM)	+= intel-spi-platform.o
 obj-$(CONFIG_SPI_STM32_QUADSPI)	+= stm32-quadspi.o
 obj-$(CONFIG_SPI_FLASH_LITEX)	+= litex-spiflash.o
+obj-$(CONFIG_SPI_FLASH_LITEX_QUAD_READ_WRITE)	+= litex-spiflash_quad_read_write.o

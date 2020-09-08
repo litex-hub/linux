@@ -128,4 +128,12 @@ config SPI_FLASH_LITEX
 	help
 	  Generic SPI Flash bitbang driver for LiteX
 
+config SPI_FLASH_LITEX_QUAD_READ_WRITE
+	tristate "LiteX SPI Flash support support"
+	depends on OF
+	depends on HAS_IOMEM
+	depends on LITEX_SOC_CONTROLLER
+	help
+	  SPI Flash driver for LiteX using SpiFlashDualQuad core
+
 endif # MTD_SPI_NOR
