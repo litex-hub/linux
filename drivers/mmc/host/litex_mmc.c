@@ -46,37 +46,37 @@
 
 struct sdphy_regs {
 	u32 volatile carddetect[1];
-	u32 volatile clockerdivider[2];
+	u32 volatile clockerdivider[1];
 	u32 volatile initinitialize[1];
 	u32 volatile write_status[1];
 };
 
 struct sdcore_regs {
-	u32 volatile cmdargument[4];
-	u32 volatile cmdcommand[4];
+	u32 volatile cmdargument[1];
+	u32 volatile cmdcommand[1];
 	u32 volatile cmdsend[1];
-	u32 volatile cmdresponse[16];
+	u32 volatile cmdresponse[4];
 	u32 volatile cmdevent[1];
 	u32 volatile dataevent[1];
-	u32 volatile blocklength[2];
-	u32 volatile blockcount[4];
+	u32 volatile blocklength[1];
+	u32 volatile blockcount[1];
 };
 
 struct sdblock2mem_regs {
-	u32 volatile base[4];
-	u32 volatile length[4];
+	u32 volatile base[2];
+	u32 volatile length[1];
 	u32 volatile enable[1];
 	u32 volatile done[1];
 	u32 volatile loop[1];
 };
 
 struct sdmem2block_regs{
-	u32 volatile base[4];
-	u32 volatile length[4];
+	u32 volatile base[2];
+	u32 volatile length[1];
 	u32 volatile enable[1];
 	u32 volatile done[1];
 	u32 volatile loop[1];
-	u32 volatile offset[4];
+	u32 volatile offset[1];
 };
 
 
@@ -95,9 +95,9 @@ struct sdmem2block_regs{
 #define SD_TIMEOUT 2
 #define SD_WRITEERROR 3
 
-#define write_reg(reg, data) litex_set_reg(reg, sizeof(reg)/4, data)
+#define write_reg(reg, data) litex_set_reg(reg, sizeof(reg), data)
 
-#define read_reg(reg) litex_get_reg(reg, sizeof(reg)/4)
+#define read_reg(reg) litex_get_reg(reg, sizeof(reg))
 
 #define MAX_NR_BLOCKS 1
 #define DATA_BLOCK_SIZE 512
