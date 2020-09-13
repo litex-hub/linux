@@ -137,17 +137,13 @@ void sdclk_set_clk(struct litex_mmc_host *host, unsigned int clk_freq) {
 	u32 ratio = clk_freq ? host->freq / clk_freq : 256;
 	u16 r, div;
 
-	dev_info(&host->dev->dev, "litex_mmc: set clk freq to: %d\n", clk_freq);
+	dev_info(&host->dev->dev, "set clk freq to: %d\n", clk_freq);
 	for (r = 1; (r << 1) <= ratio; r <<= 1);
 	div = min(max(r, 2), 256);
 	pr_info("litex_mmc: clk set to %d with div %d\n", host->freq/div, div);
 	litex_reg_writew(host->regs.sdphy->clockerdivider, div);
 }
 
-
-static void litex_issue_cmd(struct litex_mmc_host *host) {
-	litex_reg_writeb(host->regs.sdcore->cmdsend, 1);
-}
 
 static int sdcard_wait_done(__iomem u32 volatile *reg) {
 	u32 evt;
@@ -167,20 +163,13 @@ static int sdcard_wait_done(__iomem u32 volatile *reg) {
 static int send_cmd(struct litex_mmc_host *host, u8 cmd, u32 arg,
 		    u8 response_len, u8 transfer) {
 	unsigned long n;
-	int status = SD_OK;
-	unsigned done = 0;
-	__iomem u32 volatile *read_mem;
-	__iomem u32 volatile *reg2;
+	int status;
+	__iomem u32 volatile *xfer_done;
 
 	litex_reg_writel(host->regs.sdcore->cmdargument, arg);
 	litex_reg_writel(host->regs.sdcore->cmdcommand,
-		cmd << 8 | transfer << 5 | response_len);
-
-	litex_issue_cmd(host);
-
-	if (transfer != SDCARD_CTRL_DATA_TRANSFER_NONE)
-		reg2 = (transfer == SDCARD_CTRL_DATA_TRANSFER_READ) ?
-			host->regs.sdreader->done : host->regs.sdwriter->done;
+			 cmd << 8 | transfer << 5 | response_len);
+	litex_reg_writeb(host->regs.sdcore->cmdsend, 1);
 
 	status = sdcard_wait_done(host->regs.sdcore->cmdevent);
 	if (status != SD_OK) {
@@ -198,9 +187,7 @@ static int send_cmd(struct litex_mmc_host *host, u8 cmd, u32 arg,
 	}
 
 	if (transfer == SDCARD_CTRL_DATA_TRANSFER_NONE)
-		return SD_OK; // we are returning here SD_OK as we already checked status of sdcard_wait_done
-	read_mem = transfer == SDCARD_CTRL_DATA_TRANSFER_READ ?
-	    host->regs.sdreader->done : host->regs.sdwriter->done;
+		return SD_OK; // we already checked status of sdcard_wait_done
 
 	status = sdcard_wait_done(host->regs.sdcore->dataevent);
 	if (status != SD_OK){
@@ -208,9 +195,11 @@ static int send_cmd(struct litex_mmc_host *host, u8 cmd, u32 arg,
 		return status;
 	}
 
+	xfer_done = (transfer == SDCARD_CTRL_DATA_TRANSFER_READ) ?
+		    host->regs.sdreader->done : host->regs.sdwriter->done;
 	n = jiffies + 2 * HZ;
-	while (litex_reg_readb(read_mem) != 0x01)
-		if (time_after(jiffies, n)){
+	while (litex_reg_readb(xfer_done) != 0x01)
+		if (time_after(jiffies, n)) {
 			pr_err("DMA timeout\n");
 			return SD_TIMEOUT;
 		}
@@ -335,13 +324,13 @@ static void litex_request(struct mmc_host *mmc, struct mmc_request *mrq)
 			litex_reg_writeq(host->regs.sdreader->base,
 					 host->dma_handle);
 			litex_reg_writel(host->regs.sdreader->length,
-					 data->blksz*data->blocks);
+					 data->blksz * data->blocks);
 			litex_reg_writeb(host->regs.sdreader->enable, 1);
 
 			transfer = SDCARD_CTRL_DATA_TRANSFER_READ;
 
 		} else if (mrq->data->flags & MMC_DATA_WRITE) {
-			int write_length = min(data->blocks*data->blksz,
+			int write_length = min(data->blksz * data->blocks,
 					       host->buffer_size);
 
 			sg_copy_to_buffer(data->sg, data->sg_len,
@@ -370,25 +359,34 @@ static void litex_request(struct mmc_host *mmc, struct mmc_request *mrq)
 				response_len, transfer);
 	} while (retries-- > 0 && status != SD_OK);
 
-	switch(status) {
-		case SD_OK:		cmd->error = 0; break;
-		case SD_TIMEOUT:        cmd->error = -ETIMEDOUT; break;
-		case SD_CRCERROR:       cmd->error = -EILSEQ; break;
-		case SD_WRITEERROR:     cmd->error = -EINVAL; break;
-		default:                cmd->error = -EINVAL; break;
+	switch (status) {
+	case SD_OK:
+		cmd->error = 0;
+		break;
+	case SD_TIMEOUT:
+		cmd->error = -ETIMEDOUT;
+		break;
+	case SD_CRCERROR:
+		cmd->error = -EILSEQ;
+		break;
+	case SD_WRITEERROR:
+		cmd->error = -EINVAL;
+		break;
+	default:
+		cmd->error = -EINVAL;
+		break;
 	}
 
 	// It looks strange I know, but it's as it should be
 	if (response_len == SDCARD_CTRL_RESPONSE_SHORT) {
 		cmd->resp[0] = host->resp[3];
-		cmd->resp[1] = host->resp[2]&0xFF;
-	} else if (SDCARD_CTRL_RESPONSE_LONG) {
+		cmd->resp[1] = host->resp[2] & 0xFF;
+	} else if (response_len == SDCARD_CTRL_RESPONSE_LONG) {
 		cmd->resp[0] = host->resp[0];
 		cmd->resp[1] = host->resp[1];
 		cmd->resp[2] = host->resp[2];
 		cmd->resp[3] = host->resp[3];
 	}
-
 
 	if (status == SD_OK && transfer != SDCARD_CTRL_DATA_TRANSFER_NONE) {
 		data->bytes_xfered = min(data->blksz*data->blocks,
@@ -406,9 +404,7 @@ static void litex_request(struct mmc_host *mmc, struct mmc_request *mrq)
 
 static void litex_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 {
-	struct litex_mmc_host *host;
-
-	host = mmc_priv(mmc);
+	struct litex_mmc_host *host = mmc_priv(mmc);
 
 	if (ios->clock != host->clock) {
 		sdclk_set_clk(host, ios->clock);
