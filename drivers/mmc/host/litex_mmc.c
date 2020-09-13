@@ -148,8 +148,7 @@ void sdclk_set_clk(struct litex_mmc_host *host, unsigned int clk_freq) {
 	while((r<<1) <= ratio) r<<=1;
 	int new_val = max(r, 2);
 	new_val = min(new_val, 256);
-	printk(KERN_ERR"Frequency set to %d with divider %d\n",
-			host->freq/r, new_val);
+	pr_info("Frequency set to %d with divider %d\n", host->freq/r, new_val);
 	write_reg(host->regs.sdphy->clockerdivider, r);
 }
 
@@ -210,7 +209,7 @@ static int send_cmd(struct litex_mmc_host *host, u8 cmd, u32 arg,
 
 	status = sdcard_wait_done(host->regs.sdcore->cmdevent);
 	if(status != SD_OK) {
-		printk(KERN_ERR"Command failed with status %d\n",status);
+		pr_err("Command failed with status %d\n", status);
 		return status;
 	}
 
@@ -229,14 +228,14 @@ static int send_cmd(struct litex_mmc_host *host, u8 cmd, u32 arg,
 
 	status = sdcard_wait_done(host->regs.sdcore->dataevent);
 	if (status != SD_OK){
-		printk(KERN_ERR"Data transfer failed with status %d\n",status);
+		pr_err("Data transfer failed with status %d\n", status);
 		return status;
 	}
 
 	n = jiffies + 2 * HZ;
 	while (read_reg(read_mem) != 0x01)
 		if(time_after(jiffies, n)){
-			printk(KERN_ERR"DMA timeout\n");
+			pr_err("DMA timeout\n");
 			return SD_TIMEOUT;
 		}
 
@@ -524,7 +523,7 @@ static int litex_mmc_probe(struct platform_device *pdev)
 	host->app_cmd = false;
 
 	if (dma_set_mask(&pdev->dev, DMA_BIT_MASK(32))){
-		printk(KERN_ERR"Unable to set DMA driver failed\n");
+		pr_err("Unable to set DMA driver failed\n");
 		goto err_exit;
 	}
 
