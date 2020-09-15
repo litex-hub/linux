@@ -134,13 +134,12 @@ struct litex_mmc_config {
 
 
 void sdclk_set_clk(struct litex_mmc_host *host, unsigned int clk_freq) {
-	u32 ratio = clk_freq ? host->freq / clk_freq : 256;
-	u16 r, div;
-
-	dev_info(&host->dev->dev, "set clk freq to: %d\n", clk_freq);
-	for (r = 1; (r << 1) <= ratio; r <<= 1);
-	div = min(max(r, 2), 256);
-	pr_info("litex_mmc: clk set to %d with div %d\n", host->freq/div, div);
+	u32 div = clk_freq ? host->freq / clk_freq : 256;
+	div = roundup_pow_of_two(div);
+	div = min(max(div, (u32)2), (u32)256);
+	dev_info(&host->dev->dev,
+		"Requested clk_freq=%d: set to %d via div=%d\n",
+		clk_freq, host->freq / div, div);
 	litex_reg_writew(host->regs.sdphy->clockerdivider, div);
 }
 
