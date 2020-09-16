@@ -80,11 +80,6 @@ static int liteeth_rx(struct net_device *netdev)
 	return netif_rx(skb);
 }
 
-static void liteeth_tx_done(struct net_device *netdev)
-{
-	netdev->stats.tx_packets++;
-}
-
 static irqreturn_t liteeth_interrupt(int irq, void *dev_id)
 {
 	struct net_device *netdev = dev_id;
@@ -93,7 +88,7 @@ static irqreturn_t liteeth_interrupt(int irq, void *dev_id)
 
 	reg = litex_reg_readb(priv->base + LITEETH_READER_EV_PENDING_OFF);
 	if (reg) {
-		liteeth_tx_done(netdev);
+		netdev->stats.tx_packets++;
 		litex_reg_writeb(priv->base + LITEETH_READER_EV_PENDING_OFF,
 				 reg);
 	}
