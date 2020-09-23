@@ -448,7 +448,7 @@ static int litex_mmc_probe(struct platform_device *pdev)
 {
 	struct resource *res;
 	struct litex_mmc_host *host;
-	struct device_node *node, *cpus;
+	struct device_node *node, *cpu;
 	struct mmc_host *mmc;
 	int ret;
 	int i;
@@ -479,9 +479,9 @@ static int litex_mmc_probe(struct platform_device *pdev)
 	// Initial state
 	host->clock = 0;
 
-	cpus = of_find_node_by_name(NULL, "cpus");
-	ret = of_property_read_u32(cpus, "timebase-frequency", &host->freq);
-	of_node_put(cpus);
+	cpu = of_find_node_by_name(NULL, "cpu");
+	ret = of_property_read_u32(cpu, "clock-frequency", &host->freq);
+	of_node_put(cpu);
 	if (ret)
 		goto err_exit;
 
