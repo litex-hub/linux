@@ -40,45 +40,10 @@
 #include <linux/mmc/slot-gpio.h>
 #include <linux/types.h>
 #include <linux/delay.h>
-#include <linux/litex.h>
 #include <linux/dma-mapping.h>
 #include <linux/sched/clock.h>
 
-struct sdphy_regs {
-	u32 volatile carddetect[1];
-	u32 volatile clockerdivider[1];
-	u32 volatile initinitialize[1];
-	u32 volatile write_status[1];
-};
-
-struct sdcore_regs {
-	u32 volatile cmdargument[1];
-	u32 volatile cmdcommand[1];
-	u32 volatile cmdsend[1];
-	u32 volatile cmdresponse[4];
-	u32 volatile cmdevent[1];
-	u32 volatile dataevent[1];
-	u32 volatile blocklength[1];
-	u32 volatile blockcount[1];
-};
-
-struct sdblock2mem_regs {
-	u32 volatile base[2];
-	u32 volatile length[1];
-	u32 volatile enable[1];
-	u32 volatile done[1];
-	u32 volatile loop[1];
-};
-
-struct sdmem2block_regs{
-	u32 volatile base[2];
-	u32 volatile length[1];
-	u32 volatile enable[1];
-	u32 volatile done[1];
-	u32 volatile loop[1];
-	u32 volatile offset[1];
-};
-
+#include "litex_mmc.h"
 
 #define MAX_NR_SG 1
 
@@ -102,12 +67,10 @@ struct litex_mmc_host {
 	struct mmc_host *mmc;
 	struct platform_device *dev;
 
-	struct {
-		__iomem struct sdphy_regs *sdphy;
-		__iomem struct sdcore_regs *sdcore;
-		__iomem struct sdblock2mem_regs *sdreader;
-		__iomem struct sdmem2block_regs *sdwriter;
-	} regs;
+	void __iomem *sdphy;
+	void __iomem *sdcore;
+	void __iomem *sdreader;
+	void __iomem *sdwriter;
 
 	u32 resp[4];
 	u16 rca;
@@ -140,12 +103,12 @@ void sdclk_set_clk(struct litex_mmc_host *host, unsigned int clk_freq) {
 	dev_info(&host->dev->dev,
 		"Requested clk_freq=%d: set to %d via div=%d\n",
 		clk_freq, host->freq / div, div);
-	litex_reg_writew(host->regs.sdphy->clockerdivider, div);
+	litex_reg_writew(host->sdphy + LITEX_MMC_SDPHY_CLOCKERDIV_OFF, div);
 }
 
 
-static int sdcard_wait_done(__iomem u32 volatile *reg) {
-	u32 evt;
+static int sdcard_wait_done(void __iomem *reg) {
+	u8 evt;
 	for (;;) {
 		evt = litex_reg_readb(reg);
 		if (evt & 0x1)
@@ -163,21 +126,21 @@ static int send_cmd(struct litex_mmc_host *host, u8 cmd, u32 arg,
 		    u8 response_len, u8 transfer) {
 	unsigned long n;
 	int status;
-	__iomem u32 volatile *xfer_done;
+	void __iomem *xfer_done;
 
-	litex_reg_writel(host->regs.sdcore->cmdargument, arg);
-	litex_reg_writel(host->regs.sdcore->cmdcommand,
+	litex_reg_writel(host->sdcore + LITEX_MMC_SDCORE_CMDARG_OFF, arg);
+	litex_reg_writel(host->sdcore + LITEX_MMC_SDCORE_CMDCMD_OFF,
 			 cmd << 8 | transfer << 5 | response_len);
-	litex_reg_writeb(host->regs.sdcore->cmdsend, 1);
+	litex_reg_writeb(host->sdcore + LITEX_MMC_SDCORE_CMDSND_OFF, 1);
 
-	status = sdcard_wait_done(host->regs.sdcore->cmdevent);
+	status = sdcard_wait_done(host->sdcore + LITEX_MMC_SDCORE_CMDEVT_OFF);
 	if (status != SD_OK) {
 		pr_err("Command failed with status %d\n", status);
 		return status;
 	}
 
 	if (response_len != SDCARD_CTRL_RESPONSE_NONE) {
-		litex_reg_rdbuf_l(host->regs.sdcore->cmdresponse,
+		litex_reg_rdbuf_l(host->sdcore + LITEX_MMC_SDCORE_CMDRSP_OFF,
 				  host->resp, 4);
 	}
 
@@ -188,14 +151,15 @@ static int send_cmd(struct litex_mmc_host *host, u8 cmd, u32 arg,
 	if (transfer == SDCARD_CTRL_DATA_TRANSFER_NONE)
 		return SD_OK; // we already checked status of sdcard_wait_done
 
-	status = sdcard_wait_done(host->regs.sdcore->dataevent);
+	status = sdcard_wait_done(host->sdcore + LITEX_MMC_SDCORE_DATAEVT_OFF);
 	if (status != SD_OK){
 		pr_err("Data transfer failed with status %d\n", status);
 		return status;
 	}
 
 	xfer_done = (transfer == SDCARD_CTRL_DATA_TRANSFER_READ) ?
-		    host->regs.sdreader->done : host->regs.sdwriter->done;
+		    host->sdreader + LITEX_MMC_SDBLK2MEM_DONE_OFF :
+		    host->sdwriter + LITEX_MMC_SDMEM2BLK_DONE_OFF;
 	n = jiffies + 2 * HZ;
 	while (litex_reg_readb(xfer_done) != 0x01)
 		if (time_after(jiffies, n)) {
@@ -254,7 +218,7 @@ static int litex_get_cd(struct mmc_host *mmc)
 	if (gpio_cd >= 0)
 		return !!gpio_cd;
 
-	return !litex_reg_readb(host->regs.sdphy->carddetect);
+	return !litex_reg_readb(host->sdphy + LITEX_MMC_SDPHY_CARDDETECT_OFF);
 }
 
 static int litex_set_bus_width(struct litex_mmc_host *host) {
@@ -319,12 +283,16 @@ static void litex_request(struct mmc_host *mmc, struct mmc_request *mrq)
 
 
 		if (mrq->data->flags & MMC_DATA_READ) {
-			litex_reg_writeb(host->regs.sdreader->enable, 0);
-			litex_reg_writeq(host->regs.sdreader->base,
+			litex_reg_writeb(host->sdreader +
+					 LITEX_MMC_SDBLK2MEM_ENA_OFF, 0);
+			litex_reg_writeq(host->sdreader +
+					 LITEX_MMC_SDBLK2MEM_BASE_OFF,
 					 host->dma_handle);
-			litex_reg_writel(host->regs.sdreader->length,
+			litex_reg_writel(host->sdreader +
+					 LITEX_MMC_SDBLK2MEM_LEN_OFF,
 					 data->blksz * data->blocks);
-			litex_reg_writeb(host->regs.sdreader->enable, 1);
+			litex_reg_writeb(host->sdreader +
+					 LITEX_MMC_SDBLK2MEM_ENA_OFF, 1);
 
 			transfer = SDCARD_CTRL_DATA_TRANSFER_READ;
 
@@ -335,12 +303,16 @@ static void litex_request(struct mmc_host *mmc, struct mmc_request *mrq)
 			sg_copy_to_buffer(data->sg, data->sg_len,
 					host->buffer, write_length);
 
-			litex_reg_writeb(host->regs.sdwriter->enable, 0);
-			litex_reg_writeq(host->regs.sdwriter->base,
+			litex_reg_writeb(host->sdwriter +
+					 LITEX_MMC_SDMEM2BLK_ENA_OFF, 0);
+			litex_reg_writeq(host->sdwriter +
+					 LITEX_MMC_SDMEM2BLK_BASE_OFF,
 					 host->dma_handle);
-			litex_reg_writel(host->regs.sdwriter->length,
+			litex_reg_writel(host->sdwriter +
+					 LITEX_MMC_SDMEM2BLK_LEN_OFF,
 					 write_length);
-			litex_reg_writeb(host->regs.sdwriter->enable, 1);
+			litex_reg_writeb(host->sdwriter +
+					 LITEX_MMC_SDMEM2BLK_ENA_OFF, 1);
 
 			transfer = SDCARD_CTRL_DATA_TRANSFER_WRITE;
 		} else {
@@ -348,8 +320,10 @@ static void litex_request(struct mmc_host *mmc, struct mmc_request *mrq)
 			// Intentionally continue: set cmd status, mark req done
 		}
 
-		litex_reg_writel(host->regs.sdcore->blocklength, data->blksz);
-		litex_reg_writel(host->regs.sdcore->blockcount, data->blocks);
+		litex_reg_writel(host->sdcore + LITEX_MMC_SDCORE_BLKLEN_OFF,
+				 data->blksz);
+		litex_reg_writel(host->sdcore + LITEX_MMC_SDCORE_BLKCNT_OFF,
+				 data->blocks);
 
 	}
 
@@ -425,21 +399,12 @@ static const struct mmc_host_ops litex_mmc_ops = {
 	.set_ios = litex_set_ios,
 };
 
-#define RESOURCE_OFFSET(host, resource_ptr_offsets, i) *(void **)((char *)host + resource_ptr_offsets[i])
-
-#define MAP_RESOURCE(host, resource_ptr_offsets, pdev, i) \
+#define MAP_RESOURCE(res_name, idx) \
 { \
-	res = platform_get_resource(pdev, IORESOURCE_MEM, i); \
-	if (!res) { \
-		dev_err(&pdev->dev, "Resource %d missing\n", i); \
-		ret = -ENODEV; \
-		goto err_exit; \
-	} \
-	RESOURCE_OFFSET(host, resource_ptr_offsets, i) = \
-		devm_ioremap_resource(&pdev->dev, res); \
-	if (!RESOURCE_OFFSET(host, resource_ptr_offsets, i)) { \
-		dev_err(&pdev->dev, "Couldn't map resource %d\n", i); \
-		ret = -ENOMEM; \
+	res = platform_get_resource(pdev, IORESOURCE_MEM, idx); \
+	host->res_name = devm_ioremap_resource(&pdev->dev, res); \
+	if (IS_ERR(host->res_name)) { \
+		ret = PTR_ERR(host->res_name); \
 		goto err_exit; \
 	} \
 }
@@ -451,14 +416,6 @@ static int litex_mmc_probe(struct platform_device *pdev)
 	struct device_node *node, *cpu;
 	struct mmc_host *mmc;
 	int ret;
-	int i;
-
-	static const size_t resource_ptr_offsets[] = {
-		offsetof(struct litex_mmc_host, regs.sdphy),
-		offsetof(struct litex_mmc_host, regs.sdcore),
-		offsetof(struct litex_mmc_host, regs.sdreader),
-		offsetof(struct litex_mmc_host, regs.sdwriter)
-	};
 
 	node = pdev->dev.of_node;
 	if (!node)
@@ -501,8 +458,10 @@ static int litex_mmc_probe(struct platform_device *pdev)
 	if (host->buffer == NULL)
 		goto err_exit;
 
-	for (i = 0; i < ARRAY_SIZE(resource_ptr_offsets); ++i)
-		MAP_RESOURCE(host, resource_ptr_offsets, pdev, i);
+	MAP_RESOURCE(sdphy, 0);
+	MAP_RESOURCE(sdcore, 1);
+	MAP_RESOURCE(sdreader, 2);
+	MAP_RESOURCE(sdwriter, 3);
 
 	ret = mmc_of_parse(mmc);
 	if (ret)
@@ -529,13 +488,13 @@ static int litex_mmc_probe(struct platform_device *pdev)
 		goto err_exit;
 	}
 
-	litex_reg_writeb(host->regs.sdreader->enable, 0);
-	litex_reg_writeq(host->regs.sdreader->base, 0);
-	litex_reg_writel(host->regs.sdreader->length, 0);
+	litex_reg_writeb(host->sdreader + LITEX_MMC_SDBLK2MEM_ENA_OFF, 0);
+	litex_reg_writeq(host->sdreader + LITEX_MMC_SDBLK2MEM_BASE_OFF, 0);
+	litex_reg_writel(host->sdreader + LITEX_MMC_SDBLK2MEM_LEN_OFF, 0);
 
-	litex_reg_writeb(host->regs.sdwriter->enable, 0);
-	litex_reg_writeq(host->regs.sdwriter->base, 0);
-	litex_reg_writel(host->regs.sdwriter->length, 0);
+	litex_reg_writeb(host->sdwriter + LITEX_MMC_SDMEM2BLK_ENA_OFF, 0);
+	litex_reg_writeq(host->sdwriter + LITEX_MMC_SDMEM2BLK_BASE_OFF, 0);
+	litex_reg_writel(host->sdwriter + LITEX_MMC_SDMEM2BLK_LEN_OFF, 0);
 	return 0;
 
 err_exit:
