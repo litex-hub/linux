@@ -75,7 +75,7 @@ struct litex_mmc_host {
 	u32 resp[4];
 	u16 rca;
 
-	u8 volatile *buffer;
+	void *buffer;
 	size_t buffer_size;
 	dma_addr_t dma_handle;
 
@@ -257,8 +257,6 @@ static void litex_request(struct mmc_host *mmc, struct mmc_request *mrq)
 	u32 transfer = SDCARD_CTRL_DATA_TRANSFER_NONE;
 
 
-	int i;
-
 	if (cmd->flags & MMC_RSP_136) {
 		response_len = SDCARD_CTRL_RESPONSE_LONG;
 	} else if (cmd->flags & MMC_RSP_PRESENT) {
@@ -298,7 +296,7 @@ static void litex_request(struct mmc_host *mmc, struct mmc_request *mrq)
 
 		} else if (mrq->data->flags & MMC_DATA_WRITE) {
 			int write_length = min(data->blksz * data->blocks,
-					       host->buffer_size);
+					       (u32)host->buffer_size);
 
 			sg_copy_to_buffer(data->sg, data->sg_len,
 					host->buffer, write_length);
@@ -362,8 +360,8 @@ static void litex_request(struct mmc_host *mmc, struct mmc_request *mrq)
 	}
 
 	if (status == SD_OK && transfer != SDCARD_CTRL_DATA_TRANSFER_NONE) {
-		data->bytes_xfered = min(data->blksz*data->blocks,
-				(u32)MAX_NR_BLOCKS*DATA_BLOCK_SIZE);
+		data->bytes_xfered = min(data->blksz * data->blocks,
+				(u32)(MAX_NR_BLOCKS*DATA_BLOCK_SIZE));
 		if (transfer == SDCARD_CTRL_DATA_TRANSFER_READ) {
 			sg_copy_from_buffer(data->sg, sg_nents(data->sg),
 				host->buffer, data->bytes_xfered);
@@ -452,7 +450,7 @@ static int litex_mmc_probe(struct platform_device *pdev)
 		goto err_exit;
 	}
 
-	host->buffer_size = MAX_NR_BLOCKS*DATA_BLOCK_SIZE*2;
+	host->buffer_size = MAX_NR_BLOCKS * DATA_BLOCK_SIZE * 2;
 	host->buffer = dma_alloc_coherent(&pdev->dev, host->buffer_size,
 					  &host->dma_handle, GFP_DMA);
 	if (host->buffer == NULL)
