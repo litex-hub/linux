@@ -86,15 +86,6 @@ struct litex_mmc_host {
 	bool app_cmd;
 };
 
-struct litex_mmc_config {
-	int (*get_cd)(int module);
-	int (*get_ro)(int module);
-	void (*set_power)(int module, bool on);
-	u32 max_freq;
-	u32 caps;
-	u8 nr_sg;
-};
-
 
 void sdclk_set_clk(struct litex_mmc_host *host, unsigned int clk_freq) {
 	u32 div = clk_freq ? host->freq / clk_freq : 256;
@@ -183,28 +174,6 @@ static inline int send_app_set_bus_width_cmd(
 	return send_cmd(host, SD_APP_SET_BUS_WIDTH, width,
 			SDCARD_CTRL_RESPONSE_SHORT,
 			SDCARD_CTRL_DATA_TRANSFER_NONE);
-}
-
-/*
- Return values for the get_ro callback should be:
-*   0 for a read/write card
-*   1 for a read-only card
-*   -ENOSYS when not supported (equal to NULL callback)
-*   or a negative errno value when something bad happened
-*/
-static int litex_get_ro(struct mmc_host *mmc)
-{
-	struct platform_device *pdev = to_platform_device(mmc->parent);
-	struct litex_mmc_config *config = pdev->dev.platform_data;
-	int ro;
-
-	if (config && config->get_ro) {
-		ro = config->get_ro(pdev->id);
-	} else {
-		ro = mmc_gpio_get_ro(mmc);
-	}
-
-	return ro;
 }
 
 static int litex_get_cd(struct mmc_host *mmc)
@@ -392,7 +361,6 @@ static void litex_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 
 static const struct mmc_host_ops litex_mmc_ops = {
 	.get_cd = litex_get_cd,
-	.get_ro = litex_get_ro,
 	.request = litex_request,
 	.set_ios = litex_set_ios,
 };
