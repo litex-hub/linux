@@ -126,7 +126,7 @@ static int send_cmd(struct litex_mmc_host *host, u8 cmd, u32 arg,
 
 	status = sdcard_wait_done(host->sdcore + LITEX_MMC_SDCORE_CMDEVT_OFF);
 	if (status != SD_OK) {
-		pr_err("Command failed with status %d\n", status);
+		pr_err("Command (cmd %d) failed, status %d\n", cmd, status);
 		return status;
 	}
 
@@ -144,7 +144,7 @@ static int send_cmd(struct litex_mmc_host *host, u8 cmd, u32 arg,
 
 	status = sdcard_wait_done(host->sdcore + LITEX_MMC_SDCORE_DATAEVT_OFF);
 	if (status != SD_OK){
-		pr_err("Data transfer failed with status %d\n", status);
+		pr_err("Data xfer (cmd %d) failed, status %d\n", cmd, status);
 		return status;
 	}
 
@@ -154,7 +154,7 @@ static int send_cmd(struct litex_mmc_host *host, u8 cmd, u32 arg,
 	n = jiffies + 2 * HZ;
 	while (litex_reg_readb(xfer_done) != 0x01)
 		if (time_after(jiffies, n)) {
-			pr_err("DMA timeout\n");
+			pr_err("DMA timeout (cmd %d)\n", cmd);
 			return SD_TIMEOUT;
 		}
 
