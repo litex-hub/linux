@@ -180,14 +180,24 @@ static int litex_get_cd(struct mmc_host *mmc)
 {
 	struct litex_mmc_host *host = mmc_priv(mmc);
 	int gpio_cd = mmc_gpio_get_cd(mmc);
+	int ret;
 
-	if (!mmc_card_is_removable(host->mmc))
+	if (!mmc_card_is_removable(mmc))
 		return 1;
 
 	if (gpio_cd >= 0)
-		return !!gpio_cd;
+		/* GPIO based card-detect explicitly specified in DTS */
+		ret = !!gpio_cd;
+	else
+		/* use gateware card-detect bit by default */
+		ret = !litex_reg_readb(host->sdphy +
+				       LITEX_MMC_SDPHY_CARDDETECT_OFF);
 
-	return !litex_reg_readb(host->sdphy + LITEX_MMC_SDPHY_CARDDETECT_OFF);
+	/* ensure bus width will be set (again) upon card (re)insertion */
+	if (ret == 0)
+		host->is_bus_width_set = false;
+
+	return ret;
 }
 
 static int litex_set_bus_width(struct litex_mmc_host *host) {
