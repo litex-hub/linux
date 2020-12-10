@@ -139,6 +139,8 @@ static int send_cmd(struct litex_mmc_host *host, u8 cmd, u32 arg,
 		host->rca = (host->resp[3] >> 16) & 0xffff;
 	}
 
+	host->app_cmd = (cmd == MMC_APP_CMD);
+
 	if (transfer == SDCARD_CTRL_DATA_TRANSFER_NONE)
 		return SD_OK; // we already checked status of sdcard_wait_done
 
@@ -176,6 +178,23 @@ static inline int send_app_set_bus_width_cmd(
 			SDCARD_CTRL_DATA_TRANSFER_NONE);
 }
 
+static int litex_set_bus_width(struct litex_mmc_host *host) {
+	bool app_cmd_sent = host->app_cmd; /* was preceding command app_cmd? */
+	int status;
+
+	/* ensure 'app_cmd' precedes 'app_set_bus_width_cmd' */
+	if (!app_cmd_sent)
+		send_app_cmd(host);
+
+	status = send_app_set_bus_width_cmd(host, host->bus_width);
+
+	/* re-send 'app_cmd' if necessary */
+	if (app_cmd_sent)
+		send_app_cmd(host);
+
+	return status;
+}
+
 static int litex_get_cd(struct mmc_host *mmc)
 {
 	struct litex_mmc_host *host = mmc_priv(mmc);
@@ -200,23 +219,6 @@ static int litex_get_cd(struct mmc_host *mmc)
 	return ret;
 }
 
-static int litex_set_bus_width(struct litex_mmc_host *host) {
-	int status;
-	// Check if last cmd was app cmd, if not, send app cmd
-	if (!host->app_cmd) {
-		send_app_cmd(host);
-	}
-	status = send_app_set_bus_width_cmd(host, host->bus_width);
-	if (status == SD_OK) {
-		host->is_bus_width_set = true;
-	}
-	// If last command was app cmd, redo it for this command
-	if (host->app_cmd) {
-		send_app_cmd(host);
-	}
-	return status;
-}
-
 /*
  * Send request to a card. Command, data transfer, things like this.
  * Call mmc_request_done() when finished.
@@ -234,7 +236,6 @@ static void litex_request(struct mmc_host *mmc, struct mmc_request *mrq)
 
 	u32 response_len = SDCARD_CTRL_RESPONSE_NONE;
 	u32 transfer = SDCARD_CTRL_DATA_TRANSFER_NONE;
-
 
 	if (cmd->flags & MMC_RSP_136) {
 		response_len = SDCARD_CTRL_RESPONSE_LONG;
@@ -256,8 +257,8 @@ static void litex_request(struct mmc_host *mmc, struct mmc_request *mrq)
 					return;
 				}
 			}
+			host->is_bus_width_set = true;
 		}
-
 
 		if (mrq->data->flags & MMC_DATA_READ) {
 			litex_reg_writeb(host->sdreader +
@@ -301,7 +302,6 @@ static void litex_request(struct mmc_host *mmc, struct mmc_request *mrq)
 				 data->blksz);
 		litex_reg_writel(host->sdcore + LITEX_MMC_SDCORE_BLKCNT_OFF,
 				 data->blocks);
-
 	}
 
 	do {
@@ -346,8 +346,6 @@ static void litex_request(struct mmc_host *mmc, struct mmc_request *mrq)
 				host->buffer, data->bytes_xfered);
 		}
 	}
-
-	host->app_cmd = (cmd->opcode == MMC_APP_CMD && status == SD_OK);
 
 	mmc_request_done(mmc, mrq);
 }
