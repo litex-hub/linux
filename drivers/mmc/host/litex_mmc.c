@@ -144,11 +144,12 @@ void sdclk_set_clk(struct litex_mmc_host *host, unsigned int clk_freq) {
 	else
 		ratio = host->freq / clk_freq;
 	int r = 1;
-	while((r<<1) <= ratio) r<<=1;
+	while ((r << 1) <= ratio)
+		r <<= 1;
 	int new_val = max(r, 2);
 	new_val = min(new_val, 256);
 	printk(KERN_ERR"Frequency set to %d with divider %d\n",
-			host->freq/r, new_val);
+			host->freq / r, new_val);
 	write_reg(host->regs.sdphy->clockerdivider, r);
 }
 
@@ -176,7 +177,6 @@ static int sdcard_wait_done(__iomem u32 volatile  *reg) {
 	u32 evt;
 	while (1) {
 		evt = read_reg(reg);
-		udelay(5);
 		if (evt & 0x1) {
 			if (evt & 0x4) {
 				return SD_TIMEOUT;
@@ -186,6 +186,7 @@ static int sdcard_wait_done(__iomem u32 volatile  *reg) {
 			}
 			return SD_OK;
 		}
+		udelay(5);
 	}
 }
 
@@ -204,12 +205,12 @@ static int send_cmd(struct litex_mmc_host *host, u8 cmd, u32 arg,
 	litex_issue_cmd(host);
 
 	if (transfer != SDCARD_CTRL_DATA_TRANSFER_NONE)
-               reg2 =transfer == SDCARD_CTRL_DATA_TRANSFER_READ ?
+               reg2 = transfer == SDCARD_CTRL_DATA_TRANSFER_READ ?
            host->regs.sdreader->done : host->regs.sdwriter->done;
 
 	status = sdcard_wait_done(host->regs.sdcore->cmdevent);
-	if(status != SD_OK) {
-		printk(KERN_ERR"Command was unscucessful with status %d\n",status);
+	if (status != SD_OK) {
+		printk(KERN_ERR"Command was unscucessful with status %d\n", status);
 		return status;
 	}
 
@@ -221,20 +222,20 @@ static int send_cmd(struct litex_mmc_host *host, u8 cmd, u32 arg,
 		host->rca = (host->resp[3] >> 16) & 0xffff;
 	}
 
-	if(transfer == SDCARD_CTRL_DATA_TRANSFER_NONE) 
+	if (transfer == SDCARD_CTRL_DATA_TRANSFER_NONE) 
 		return SD_OK; // we are returning here SD_OK as we already checked status of sdcard_wait_done
 	read_mem = transfer == SDCARD_CTRL_DATA_TRANSFER_READ ?
 	    host->regs.sdreader->done : host->regs.sdwriter->done;
 
 	status = sdcard_wait_done(host->regs.sdcore->dataevent);
-	if (status != SD_OK){
-		printk(KERN_ERR"Data transfer was unsuccessful with status %d\n",status);
+	if (status != SD_OK) {
+		printk(KERN_ERR"Data transfer was unsuccessful with status %d\n", status);
 		return status;
 	}
 
 	n = jiffies + 2 * HZ;
 	while (read_reg(read_mem) != 0x01)
-		if(time_after(jiffies, n)){
+		if (time_after(jiffies, n)) {
 			printk(KERN_ERR"DMA timeout\n");
 			return SD_TIMEOUT;
 		}
@@ -357,11 +358,11 @@ static void litex_request(struct mmc_host *mmc, struct mmc_request *mrq)
 
 
 		if (mrq->data->flags & MMC_DATA_READ) {
-			write_reg(host->regs.sdreader->enable,0);
-			write_reg(host->regs.sdreader->base,host->dma_handle);
+			write_reg(host->regs.sdreader->enable, 0);
+			write_reg(host->regs.sdreader->base, host->dma_handle);
 			write_reg(host->regs.sdreader->length,
-					data->blksz*data->blocks);
-			write_reg(host->regs.sdreader->enable,1);
+					data->blksz * data->blocks);
+			write_reg(host->regs.sdreader->enable, 1);
 
 			transfer = SDCARD_CTRL_DATA_TRANSFER_READ;
 
@@ -372,11 +373,11 @@ static void litex_request(struct mmc_host *mmc, struct mmc_request *mrq)
 			sg_copy_to_buffer(data->sg, data->sg_len,
 					host->buffer, write_length);
 
-			write_reg(host->regs.sdwriter->enable,0);
-			write_reg(host->regs.sdwriter->base,host->dma_handle);
+			write_reg(host->regs.sdwriter->enable, 0);
+			write_reg(host->regs.sdwriter->base, host->dma_handle);
 			write_reg(host->regs.sdwriter->length,
 					write_length);
-			write_reg(host->regs.sdwriter->enable,1);
+			write_reg(host->regs.sdwriter->enable, 1);
 
 			transfer = SDCARD_CTRL_DATA_TRANSFER_WRITE;
 		} else {
@@ -384,10 +385,8 @@ static void litex_request(struct mmc_host *mmc, struct mmc_request *mrq)
 		"Data present without read or write flag.\n");
 			// Intentionally continue here to set cmd status and mark request done
 		}
-
-		write_reg(host->regs.sdcore->blocklength,data->blksz);
-		write_reg(host->regs.sdcore->blockcount,data->blocks);
-
+		write_reg(host->regs.sdcore->blocklength, data->blksz);
+		write_reg(host->regs.sdcore->blockcount, data->blocks);
 	}
 
 	do {
@@ -416,8 +415,8 @@ static void litex_request(struct mmc_host *mmc, struct mmc_request *mrq)
 
 
 	if (status == SD_OK && transfer != SDCARD_CTRL_DATA_TRANSFER_NONE) {
-		data->bytes_xfered = min(data->blksz*data->blocks, 
-				(u32)MAX_NR_BLOCKS*DATA_BLOCK_SIZE);
+		data->bytes_xfered = min(data->blksz * data->blocks, 
+				(u32)MAX_NR_BLOCKS * DATA_BLOCK_SIZE);
 		if (transfer == SDCARD_CTRL_DATA_TRANSFER_READ) {
 			sg_copy_from_buffer(data->sg, sg_nents(data->sg),
 				host->buffer, data->bytes_xfered);
@@ -478,7 +477,7 @@ static int litex_mmc_probe(struct platform_device *pdev)
 {
 	struct resource *res;
 	struct litex_mmc_host *host;
-	struct device_node *node,*cpus;
+	struct device_node *node, *cpus;
 	struct mmc_host *mmc;
 	int ret;
 	int i;
@@ -513,7 +512,7 @@ static int litex_mmc_probe(struct platform_device *pdev)
 	host->clock = 0;
 	
 	cpus = of_find_node_by_name(NULL, "cpus");
-	ret = of_property_read_u32(cpus,"timebase-frequency",&host->freq);
+	ret = of_property_read_u32(cpus, "timebase-frequency", &host->freq);
 	of_node_put(cpus);
 	if(ret){
 		goto err_exit;
@@ -524,26 +523,24 @@ static int litex_mmc_probe(struct platform_device *pdev)
 	host->is_bus_width_set = false;
 	host->app_cmd = false;
 
-	if (dma_set_mask(&pdev->dev, DMA_BIT_MASK(32))){
+	if (dma_set_mask(&pdev->dev, DMA_BIT_MASK(32))) {
 		printk(KERN_ERR"Unable to set DMA driver failed\n");
 		goto err_exit;
 	} 
 
-	host->buffer_size = MAX_NR_BLOCKS*DATA_BLOCK_SIZE*2;
+	host->buffer_size = MAX_NR_BLOCKS * DATA_BLOCK_SIZE * 2;
 	host->buffer = dma_alloc_coherent(&pdev->dev, host->buffer_size,
 		       			  &host->dma_handle, GFP_DMA);
-	if(host->buffer == NULL){
+	if (host->buffer == NULL)
 		goto err_exit;
-	}
 
 	for (i = 0; i < ARRAY_SIZE(resource_ptr_offsets); ++i) {
 		MAP_RESOURCE(host, resource_ptr_offsets, pdev, i);
 	}
 
 	ret = mmc_of_parse(mmc);
-	if (ret) {
+	if (ret)
 		goto err_exit;
-	}
 	
 	mmc->caps = MMC_CAP_WAIT_WHILE_BUSY | MMC_CAP_DRIVER_TYPE_D;
 	mmc->caps2 = MMC_CAP2_NO_SDIO | MMC_CAP2_FULL_PWR_CYCLE | MMC_CAP2_NO_WRITE_PROTECT;
@@ -562,17 +559,16 @@ static int litex_mmc_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, host);
 
 	ret = mmc_add_host(mmc);
-	if (ret < 0) {
+	if (ret < 0)
 		goto err_exit;
-	}
 	
-	write_reg(host->regs.sdreader->enable,0);
-	write_reg(host->regs.sdreader->base,0);
-	write_reg(host->regs.sdreader->length,0);
+	write_reg(host->regs.sdreader->enable, 0);
+	write_reg(host->regs.sdreader->base, 0);
+	write_reg(host->regs.sdreader->length, 0);
 
-	write_reg(host->regs.sdwriter->enable,0);
-	write_reg(host->regs.sdwriter->base,0);
-	write_reg(host->regs.sdwriter->length,0);
+	write_reg(host->regs.sdwriter->enable, 0);
+	write_reg(host->regs.sdwriter->base, 0);
+	write_reg(host->regs.sdwriter->length, 0);
 	printk(KERN_ERR"Litex MMC driver initialized\n");
 	return 0;
 
