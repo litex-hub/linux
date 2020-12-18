@@ -30,11 +30,14 @@
 #define VCCAUX_REG_SIZE               2
 #define VCCBRAM_REG_OFFSET            0x18
 #define VCCBRAM_REG_SIZE              2
+#define VAUX9_REG_OFFSET			  0x20	//Agregado
+#define VAUX9_REG_SIZE                2		//Agregado
 
 #define CHANNEL_TEMP                  0
 #define CHANNEL_VCCINT                0
 #define CHANNEL_VCCAUX                1
 #define CHANNEL_VCCBRAM               2
+#define CHANNEL_VAUX9                 3		//Agregado
 
 struct litex_hwmon {
 	void __iomem     *membase;
@@ -53,6 +56,11 @@ static inline long litex_temp_transfer_fun(long val)
 static inline long litex_supp_transfer_fun(long val)
 {
 	return ((val * 3000) / 4096);
+}
+
+static inline long litex_vaux9_transfer_fun(long val)		//Agregado
+{
+	return ((val * 4) / 4096);			//Tener en cuenta que cada Ampere equivale a una lectura de 250mV y el ADC mide entre 0 y 1V 
 }
 
 static inline int litex_read_temp(struct litex_hwmon *hwmon_s, u32 attr,
@@ -93,6 +101,10 @@ static inline int litex_read_in(struct litex_hwmon *hwmon_s, u32 attr,
 	case CHANNEL_VCCBRAM:
 		offset = VCCBRAM_REG_OFFSET;
 		size = VCCBRAM_REG_SIZE;
+		break;
+	case CHANNEL_VAUX9:					//Agregado
+		offset = VAUX9_REG_OFFSET;
+		size = VAUX9_REG_SIZE;
 		break;
 	default:
 		return -EINVAL;
@@ -150,6 +162,7 @@ static const unsigned int litex_vcc_config[] = {
 	HWMON_I_INPUT,
 	HWMON_I_INPUT,
 	HWMON_I_INPUT,
+	HWMON_I_INPUT,	//Agregado
 	0
 };
 
