@@ -20,3 +20,5 @@ spi-nor-objs			+= xmc.o
 obj-$(CONFIG_MTD_SPI_NOR)	+= spi-nor.o
 
 obj-$(CONFIG_MTD_SPI_NOR)	+= controllers/
+
+obj-$(CONFIG_SPI_FLASH_LITEX)	+= litex-spiflash.o
