@@ -577,6 +577,13 @@ config SPI_KSPI2
 	  This driver can also be built as a module. If so, the module
 	  will be called spi-kspi2.
 
+config SPI_LITESPI
+	tristate "LiteSPI SPI master driver"
+	depends on OF && LITEX
+	help
+	  This enables support for LiteSPI, the SPI master controller of
+	  the LiteX FPGA SoC builder.
+
 config SPI_LM70_LLP
 	tristate "Parallel port adapter for LM70 eval board (DEVELOPMENT)"
 	depends on PARPORT
