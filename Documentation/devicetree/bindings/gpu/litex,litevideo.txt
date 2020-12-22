@@ -1,0 +1,34 @@
+DRM LiteX LiteVideo driver
+
+Required properties:
+- compatible: should be "litex,litevideo"
+- reg: base address of configuration registers with length
+- litevideo,pixel-clock: pixel clock frequency in kHz
+- litevideo,h-active: horizontal active pixels
+- litevideo,h-blanking: total horizontal blanking
+- litevideo,h-sync: horizontal sync width
+- litevideo,h-front-porch: horizontal front porch
+- litevideo,v-active: vertical active pixels
+- litevideo,v-blanking: vertical total blanking
+- litevideo,v-sync: vertical sync width
+- litevideo,v-front-porch: vertical front porch
+- litevideo,dma-offset: dma offset in memory
+- litevideo,dma-length: size of memory used for storing the image
+
+Examples:
+
+litevideo0: gpu@f0009800 {
+	compatible = "litex,litevideo";
+	reg = <0x0 0xf0009800 0x0 0x100>;
+	litevideo,pixel-clock = <148500>;
+	litevideo,h-active = <1920>;
+	litevideo,h-blanking = <280>;
+	litevideo,h-sync = <44>;
+	litevideo,h-front-porch = <148>;
+	litevideo,v-active = <1080>;
+	litevideo,v-blanking = <45>;
+	litevideo,v-sync = <5>;
+	litevideo,v-front-porch = <36>;
+	litevideo,dma-offset = <0x8000000>;
+	litevideo,dma-length = <0x7e9000>;
+};
