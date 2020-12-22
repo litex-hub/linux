@@ -230,6 +230,7 @@ obj-$(CONFIG_DRM_HYPERV) += hyperv/
 obj-y			+= sitronix/
 obj-y			+= solomon/
 obj-$(CONFIG_DRM_SPRD) += sprd/
+obj-$(CONFIG_DRM_LITEVIDEO) += litevideo/
 obj-$(CONFIG_DRM_LOONGSON) += loongson/
 obj-$(CONFIG_DRM_POWERVR) += imagination/
 
