@@ -153,4 +153,122 @@ static inline u64 litex_read64(void __iomem *reg)
 	return _litex_get_reg(reg, sizeof(u64));
 }
 
+/*
+ * Large LiteX CSRs (typically those larger than 64 bits) may represent
+ * arrays of smaller (unsigned) integers. The following set of accessors
+ * will transfer such an array of standard unsigned integers between a
+ * LiteX CSR and a memory buffer. In the case of an array of u8 values,
+ * this is the equivalent of memcpy between a LiteX CSR and RAM.
+ */
+
+/* read a LiteX register located at address a into a buffer of cnt elements */
+#define _litex_rd_reg_buf(a, buf, cnt) \
+{ \
+	u32 i, j, ns, elem_per_subreg; \
+	u64 r; \
+	if (sizeof(buf[0]) >= LITEX_SUBREG_SIZE) { \
+		/* one or more subregisters per element */ \
+		for (i = 0; i < cnt; i++) { \
+			buf[i] = _litex_get_reg(a, sizeof(buf[0])); \
+			a += LITEX_SUBREG_ALIGN * \
+			     _litex_num_subregs(sizeof(buf[0])); \
+		} \
+	} else { \
+		/* multiple elements per subregister (2 or 4) */ \
+		ns = _litex_num_subregs(sizeof(buf[0]) * cnt); \
+		elem_per_subreg = LITEX_SUBREG_SIZE / sizeof(buf[0]); \
+		for (i = 0; i < ns; i++) { \
+			r = _read_litex_subregister(a); \
+			for (j = elem_per_subreg - 1; j >= 0; j--) { \
+				if (i * elem_per_subreg + j < cnt) \
+					buf[i * elem_per_subreg + j] = r; \
+				r >>= sizeof(buf[0]) * 8; \
+			} \
+			a += LITEX_SUBREG_ALIGN; \
+		} \
+	} \
+}
+
+/* write a LiteX register located at addres a from a buffer of cnt elements */
+#define _litex_wr_reg_buf(a, buf, cnt) \
+{ \
+        u32 i, j, ns, elem_per_subreg; \
+        u64 v; \
+        if (sizeof(buf[0]) >= LITEX_SUBREG_SIZE) { \
+                /* one or more subregisters per element */ \
+                for (i = 0; i < cnt; i++) { \
+                        _litex_set_reg(a, sizeof(buf[0]), buf[i]); \
+                        a += LITEX_SUBREG_ALIGN * \
+			     _litex_num_subregs(sizeof(buf[0])); \
+                } \
+        } else { \
+                /* multiple elements per subregister (2 or 4) */ \
+                ns = _litex_num_subregs(sizeof(buf[0]) * cnt); \
+                elem_per_subreg = LITEX_SUBREG_SIZE / sizeof(buf[0]); \
+                for (i = 0; i < ns; i++) { \
+                        v = buf[i * elem_per_subreg + 0]; \
+                        for (j = 1; j < elem_per_subreg; j++) { \
+                                if (i * elem_per_subreg + j == cnt) \
+                                        break; \
+                                v <<= sizeof(buf[0]) * 8; \
+                                v |= buf[i * elem_per_subreg + j]; \
+                        } \
+                        _write_litex_subregister(v, a); \
+                        a += LITEX_SUBREG_ALIGN; \
+                } \
+        } \
+}
+
+static inline void
+litex_readbuf8(void __iomem *a, uint8_t *buf, int cnt)
+{
+	_litex_rd_reg_buf(a, buf, cnt);
+}
+
+static inline void
+litex_writebuf8(void __iomem *a, const uint8_t *buf, int cnt)
+{
+	_litex_wr_reg_buf(a, buf, cnt);
+}
+
+static inline void
+litex_readbuf16(void __iomem *a, uint16_t *buf, int cnt)
+{
+	_litex_rd_reg_buf(a, buf, cnt);
+}
+
+static inline void
+litex_writebuf16(void __iomem *a, const uint16_t *buf, int cnt)
+{
+	_litex_wr_reg_buf(a, buf, cnt);
+}
+
+static inline void
+litex_readbuf32(void __iomem *a, uint32_t *buf, int cnt)
+{
+	_litex_rd_reg_buf(a, buf, cnt);
+}
+
+static inline void
+litex_writebuf32(void __iomem *a, const uint32_t *buf, int cnt)
+{
+	_litex_wr_reg_buf(a, buf, cnt);
+}
+
+/* macro "else" branches never reached, no need to warn re. >= 64bit lsh */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wshift-count-overflow"
+static inline void
+litex_readbuf64(void __iomem *a, uint64_t *buf, int cnt)
+{
+	_litex_rd_reg_buf(a, buf, cnt);
+}
+
+static inline void
+litex_writebuf64(void __iomem *a, const uint64_t *buf, int cnt)
+{
+	_litex_wr_reg_buf(a, buf, cnt);
+}
+#pragma GCC diagnostic pop
+
 #endif /* _LINUX_LITEX_H */
