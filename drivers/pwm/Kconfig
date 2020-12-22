@@ -291,6 +291,14 @@ config PWM_KEEMBAY
 	  To compile this driver as a module, choose M here: the module
 	  will be called pwm-keembay.
 
+config PWM_LITEX
+	tristate "LiteX PWM support"
+	depends on OF
+	depends on HAS_IOMEM
+	depends on LITEX_SOC_CONTROLLER
+	help
+	  Generic PWM framework driver for LiteX
+
 config PWM_LP3943
 	tristate "TI/National Semiconductor LP3943 PWM support"
 	depends on MFD_LP3943
