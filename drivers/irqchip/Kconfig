@@ -540,6 +540,24 @@ config LOONGSON_HTPIC
 	select GENERIC_IRQ_CHIP
 	help
 	  Support for the Loongson-3 HyperTransport PIC Controller.
+config LITEX_VEXRISCV_INTC
+	bool "LiteX VexRiscv interrupt controller support"
+	select IRQ_DOMAIN
+	help
+	  Support for the VexRiscv's interrupt controller. VexRiscv does not follow
+	  RISC-V privileged specification and uses two additional CSRs: mask and
+	  pending. Please refer to LITEX_VEXRISCV_CSR_MASK and
+	  LITEX_VEXRISCV_CSR_PENDING for their respective configuration.
+
+config LITEX_VEXRISCV_CSR_MASK
+	depends on LITEX_VEXRISCV_INTC
+	hex "VexRiscv's mask CSR index."
+	default 0x9c0
+
+config LITEX_VEXRISCV_CSR_PENDING
+	depends on LITEX_VEXRISCV_INTC
+	hex "VexRiscv's pending CSR index."
+	default 0xdc0
 
 config LOONGSON_HTVEC
 	bool "Loongson3 HyperTransport Interrupt Vector Controller"
