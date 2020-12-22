@@ -361,6 +361,12 @@ config GPIO_LOGICVC
 	  Say yes here to support GPIO functionality of the Xylon LogiCVC
 	  programmable logic block.
 
+config GPIO_LITEX
+	tristate "LiteX GPIO support"
+	depends on OF && HAS_IOMEM && LITEX_SOC_CONTROLLER
+	help
+	  driver for GPIO functionality on LiteX
+
 config GPIO_LOONGSON
 	bool "Loongson-2/3 GPIO support"
 	depends on CPU_LOONGSON2EF || CPU_LOONGSON64
