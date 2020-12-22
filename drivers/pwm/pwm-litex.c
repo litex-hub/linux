@@ -1,0 +1,147 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * Copyright (C) 2019 Antmicro <www.antmicro.com>
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ */
+
+#include <linux/clk.h>
+#include <linux/err.h>
+#include <linux/io.h>
+#include <linux/kernel.h>
+#include <linux/litex.h>
+#include <linux/math64.h>
+#include <linux/module.h>
+#include <linux/of_address.h>
+#include <linux/of.h>
+#include <linux/platform_device.h>
+#include <linux/pwm.h>
+#include <linux/slab.h>
+#include <linux/stmp_device.h>
+
+#define REG_EN_ENABLE           0x1
+#define REG_EN_DISABLE          0x0
+
+#define ENABLE_REG_OFFSET       0x0
+#define WIDTH_REG_OFFSET        0x4
+#define PERIOD_REG_OFFSET       0x14
+
+struct litex_pwm_chip {
+	unsigned int clock;
+	void __iomem *base;
+	void __iomem *width;
+	void __iomem *period;
+	void __iomem *enable;
+};
+
+static int litex_pwm_apply(struct pwm_chip *chip, struct pwm_device *pwm,
+			   const struct pwm_state *state)
+{
+	struct litex_pwm_chip *litex = pwmchip_get_drvdata(chip);
+	u32 period_cycles, duty_cycles;
+
+	if (!state->enabled) {
+		if (pwm->state.enabled)
+			litex_write8(litex->enable, REG_EN_DISABLE);
+
+		return 0;
+	}
+
+	/* Calculate period and duty cycles */
+	period_cycles = mul_u64_u32_div(state->period, litex->clock,
+					NSEC_PER_SEC);
+	duty_cycles = mul_u64_u32_div(state->duty_cycle, litex->clock,
+				      NSEC_PER_SEC);
+
+	/* Apply values to registers */
+	litex_write32(litex->width, duty_cycles);
+	litex_write32(litex->period, period_cycles);
+
+	if (!pwm->state.enabled)
+		litex_write8(litex->enable, REG_EN_ENABLE);
+
+	return 0;
+}
+
+static const struct pwm_ops litex_pwm_ops = {
+	.apply = litex_pwm_apply,
+};
+
+static int litex_pwm_probe(struct platform_device *pdev)
+{
+	struct device_node *node = pdev->dev.of_node;
+	struct litex_pwm_chip *litex;
+	struct pwm_chip *chip;
+	struct resource *res;
+	int ret;
+
+	if (!node) {
+		dev_err(&pdev->dev, "Fail on obtaining device node\n");
+		return -ENOMEM;
+	}
+
+	chip = devm_pwmchip_alloc(&pdev->dev, 1, sizeof(*litex));
+	if (IS_ERR(chip))
+		return PTR_ERR(chip);
+	litex = pwmchip_get_drvdata(chip);
+
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	if (!res) {
+		dev_err(&pdev->dev, "Device is busy\n");
+		return -EBUSY;
+	}
+
+	litex->base = devm_ioremap_resource(&pdev->dev, res);
+	if (IS_ERR(litex->base)) {
+		dev_err(&pdev->dev, "Fail to get base address\n");
+		return -EIO;
+	}
+
+	ret = of_property_read_u32(node, "clock", &(litex->clock));
+	if (ret < 0) {
+		dev_err(&pdev->dev, "No clock record in the dts file\n");
+		return -ENODEV;
+	}
+
+	litex->width = litex->base + WIDTH_REG_OFFSET;
+	litex->period = litex->base + PERIOD_REG_OFFSET;
+	litex->enable = litex->base + ENABLE_REG_OFFSET;
+
+	chip->ops = &litex_pwm_ops;
+
+	ret = devm_pwmchip_add(&pdev->dev, chip);
+	if (ret < 0)
+		dev_err(&pdev->dev, "Failed to add pwm chip %d\n", ret);
+
+	return 0;
+}
+
+static const struct of_device_id litex_of_match[] = {
+	{ .compatible = "litex,pwm" },
+	{}
+};
+MODULE_DEVICE_TABLE(of, litex_of_match);
+
+static struct platform_driver litex_pwm_driver = {
+	.driver = {
+		.name = "litex-pwm",
+		.of_match_table   = of_match_ptr(litex_of_match)
+	},
+	.probe = litex_pwm_probe,
+};
+module_platform_driver(litex_pwm_driver);
+
+MODULE_DESCRIPTION("LiteX PWM driver");
+MODULE_AUTHOR("Antmicro <www.antmicro.com>");
+MODULE_LICENSE("GPL v2");
