@@ -1,0 +1,12 @@
+LiteX XADC hwmon controller
+
+Required properties:
+- compatible: should be "litex,hwmon-xadc"
+- reg: base address of configuration registers with length
+
+Examples:
+
+hwmon@f0003000 {
+	compatible = "litex,hwmon-xadc";
+	reg = <0x0 0xf0003000 0x0 0x20>;
+};
