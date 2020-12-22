@@ -1,0 +1,12 @@
+LiteX I2C controller
+
+Required properties:
+- compatible: should be "litex,i2c"
+- reg: base address of configuration registers with length
+
+Examples:
+
+i2c@f0003000 {
+	compatible = "litex,i2c";
+	reg = <0x0 0xf0003000 0x0 0x5>;
+};
