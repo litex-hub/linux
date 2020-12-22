@@ -1,0 +1,23 @@
+LiteX GPIO controller
+
+Required properties:
+- compatible: should be "litex,gpio"
+- reg: base address and length of the register
+- litex,ngpio: number of gpio pins in port
+- litex,direction: direction of gpio port, should be "in" or "out"
+
+Examples:
+
+gpio@f0003000 {
+	compatible = "litex,gpio";
+	reg = <0x0 0xf0003800 0x0 0x1>;
+	litex,ngpio = <4>;
+	litex,direction = "in";
+};
+
+gpio@f0003800 {
+	compatible = "litex,gpio";
+	reg = <0x0 0xf0003800 0x0 0x1>;
+	litex,ngpio = <4>;
+	litex,direction = "out";
+};
