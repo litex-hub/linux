@@ -376,6 +376,12 @@ config COMMON_CLK_K210
 	help
 	  Support for the Canaan Kendryte K210 RISC-V SoC clocks.
 
+config COMMON_CLK_LITEX
+	tristate "LiteX Clock control support"
+	depends on COMMON_CLK && OF && LITEX_SOC_CONTROLLER
+	help
+	  Clock control support for LiteX SoC builder, utilising MMCM unit and DRP registers
+
 source "drivers/clk/actions/Kconfig"
 source "drivers/clk/analogbits/Kconfig"
 source "drivers/clk/baikal-t1/Kconfig"

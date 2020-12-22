@@ -1,0 +1,232 @@
+# SPDX-License-Identifier: GPL-2.0
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/clock/litex,clock.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: LiteX clock control driver
+
+description: |
+  Common clock driver with MMCM unit for dynamic reconfiguration
+  of up to 7 clock outputs with ability to change frequency, duty
+  cycle and phase offset
+
+maintainers:
+  - Karol Gugala <kgugala@antmicro.com>
+  - Mateusz Holenko <mholenko@antmicro.com>
+
+properties:
+  compatible:
+    const: litex,clock
+
+  reg:
+    description: Base address and lengths of the register space
+
+  "#clock-cells":
+    description: |
+      Number of cells in a clock specifier;
+      Typically 0 for nodes with a single clock output
+      and 1 for nodes with multiple clock outputs.
+
+    const: 1
+
+  "#address-cells":
+    description: |
+      Number of cells that are needed to form the base address
+      part in the reg property.
+
+    const: 1
+
+  "#size-cells":
+    description: |
+      Used to state how many cells are in each field of a reg property
+
+    const: 0
+
+  clock-output-names:
+    description: |
+      List of strings of clock output signal names indexed
+      by the first cell in the clock specifier.
+
+    minItems: 1
+    maxItems: 7
+    items:
+      - const: CLKOUT0
+      - const: CLKOUT1
+      - const: CLKOUT2
+      - const: CLKOUT3
+      - const: CLKOUT4
+      - const: CLKOUT5
+      - const: CLKOUT6
+
+  litex,nclkout:
+    description: |
+      Number of desired clock outputs
+
+        min: 1
+        max: 7
+
+  litex,lock-timeout:
+    description: |
+      Number of ms to wait for MMCM to assert LOCK signal
+
+        min: 1
+
+  litex,drdy-timeout:
+    description: |
+      Number of ms to wait for MMCM to assert DRDY signal
+
+        min: 1
+
+  litex,sys-clock-freq:
+    description: |
+      System clock frequency
+
+  CLKOUTx:
+    description: |
+      Child node representing configurable clock outputs of MMCM unit
+
+    properties:
+      compatible:
+        const: litex,clock
+
+      reg:
+        description: |
+          clock output ID, zero-based numbering
+
+      litex,clock-frequency:
+        description: |
+          default frequency in Hz for clock output
+
+        min: 1587000
+        max: 100000000
+
+      litex,clock-phase:
+        description: |
+          default phase offset given in degrees
+
+        min: 0
+        max: 359
+
+      litex,clock-duty-num:
+        description: |
+          default duty cycle numerator value
+
+        min: 1
+        max: 100
+
+      litex,clock-duty-den:
+        description: |
+          default duty cycle denominator value
+
+        min: 1
+        max: 100
+
+    required:
+      - compatible
+      - "#clock-cells"
+      - clock-output-names
+      - reg
+      - litex,clock-frequency
+      - litex,clock-phase
+      - litex,clock-duty-num
+      - litex,clock-duty-den
+
+required:
+  - compatible
+  - reg
+  - "#clock-cells"
+  - "#address-cells"
+  - "#size-cells"
+  - clock-output-names
+  - litex,nclkout
+  - CLKOUTx
+
+examples:
+  - |
+    clk0: clk@f0003000 {
+            compatible = "litex,clk";
+            reg = <0x0 0xf0003000 0x0 0x100>;
+            #clock-cells =        <1>;
+            #address-cells = <1>;
+            #size-cells = <0>;
+            clock-output-names = "CLKOUT0",
+                                 "CLKOUT1",
+                                 "CLKOUT2",
+                                 "CLKOUT3",
+                                 "CLKOUT4",
+                                 "CLKOUT5",
+                                 "CLKOUT6";
+            litex,nclkout = <7>;
+
+            CLKOUT0: CLKOUT0 {
+                    compatible = "litex,clk";
+                    #clock-cells = <0>;
+                    clock-output-names = "CLKOUT0";
+                    reg = <0>;
+                    litex,clock-frequency = <50000000>;
+                    litex,clock-phase = <0>;
+                    litex,clock-duty = <50>;
+            };
+
+            CLKOUT1: CLKOUT1 {
+                    compatible = "litex,clk";
+                    #clock-cells = <0>;
+                    clock-output-names = "CLKOUT1";
+                    reg = <1>;
+                    litex,clock-frequency = <50000000>;
+                    litex,clock-phase = <90>;
+                    litex,clock-duty = <50>;
+            };
+
+            CLKOUT2: CLKOUT2 {
+                    compatible = "litex,clk";
+                    #clock-cells = <0>;
+                    clock-output-names = "CLKOUT2";
+                    reg = <2>;
+                    litex,clock-frequency = <25000000>;
+                    litex,clock-phase = <0>;
+                    litex,clock-duty = <25>;
+            };
+
+            CLKOUT3: CLKOUT3 {
+                    compatible = "litex,clk";
+                    #clock-cells = <0>;
+                    clock-output-names = "CLKOUT3";
+                    reg = <3>;
+                    litex,clock-frequency = <12500000>;
+                    litex,clock-phase = <0>;
+                    litex,clock-duty = <75>;
+            };
+
+            CLKOUT4: CLKOUT4 {
+                    compatible = "litex,clk";
+                    #clock-cells = <0>;
+                    clock-output-names = "CLKOUT4";
+                    reg = <4>;
+                    litex,clock-frequency = <6250000>;
+                    litex,clock-phase = <0>;
+                    litex,clock-duty = <50>;
+            };
+
+            CLKOUT5: CLKOUT5 {
+                    compatible = "litex,clk";
+                    #clock-cells = <0>;
+                    clock-output-names = "CLKOUT5";
+                    reg = <5>;
+                    litex,clock-frequency = <3125000>;
+                    litex,clock-phase = <0>;
+                    litex,clock-duty = <50>;
+            };
+
+            CLKOUT6: CLKOUT6 {
+                    compatible = "litex,clk";
+                    #clock-cells = <0>;
+                    clock-output-names = "CLKOUT6";
+                    reg = <6>;
+                    litex,clock-frequency = <1562500>;
+                    litex,clock-phase = <0>;
+                    litex,clock-duty = <5>;
+            };
+    };
+...
