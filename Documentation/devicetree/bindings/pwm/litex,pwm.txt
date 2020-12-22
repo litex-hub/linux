@@ -1,0 +1,19 @@
+LiteX PWM controller
+
+Required properties:
+- compatible: should be "litex,pwm".
+- reg: base address and length of the register set for this device.
+- clock: frequency of the main clock.
+- #pwm-cells: should be 6. See pwm.txt in this directory for a description of
+  the cells format.
+
+
+Examples:
+
+pwm@f0003000 {
+    compatible = "litex,pwm";
+    reg = <0x0 0xf0003000 0x0 0x24>;
+    clock = <100000000>;
+    #pwm-cells = <6>;
+    status = "okay";
+};
