@@ -1,0 +1,92 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/gpio/litex,gpio.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: LiteX GPIO controller
+
+maintainers:
+  - Robert Winkler <rwinkler@internships.antmicro.com>
+
+properties:
+  compatible:
+    const: litex,gpio
+
+  reg:
+    maxItems: 1
+
+  interrupts:
+    maxItems: 1
+
+  gpio-controller: true
+
+  '#gpio-cells':
+    const: 2
+
+  interrupt-controller: true
+
+  '#interrupt-cells':
+    const: 2
+    description:
+      GPIO number and flags (IRQ_TYPE_EDGE_{RISING,FALLING,BOTH}).
+
+  litex,ngpio:
+    description: Number of gpio pins in port
+    $ref: /schemas/types.yaml#/definitions/uint32
+    minimum: 1
+    maximum: 32
+
+  litex,direction:
+    description: Direction of gpio port
+    $ref: /schemas/types.yaml#/definitions/string
+    enum: [in, out]
+
+patternProperties:
+  "^(hog-[0-9]+|.+-hog(-[0-9]+)?)$":
+    type: object
+    properties:
+      gpio-hog: true
+      gpios: true
+      output-high: true
+      output-low: true
+      line-name: true
+
+    required:
+      - gpio-hog
+      - gpios
+
+    additionalProperties: false
+
+required:
+  - compatible
+  - reg
+  - gpio-controller
+  - '#gpio-cells'
+  - litex,ngpio
+  - litex,direction
+
+additionalProperties: false
+
+examples:
+  - |
+    gpio@f0003000 {
+            compatible = "litex,gpio";
+            reg = <0xf0003800 0x1>;
+            interrupts = <4>;
+            gpio-controller;
+            #gpio-cells = <2>;
+            interrupt-controller;
+            #interrupt-cells = <2>;
+            litex,ngpio = <4>;
+            litex,direction = "in";
+    };
+
+    gpio@f0003800 {
+            compatible = "litex,gpio";
+            reg = <0xf0003800 0x1>;
+            gpio-controller;
+            #gpio-cells = <2>;
+            litex,ngpio = <4>;
+            litex,direction = "out";
+    };
