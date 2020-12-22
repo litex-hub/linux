@@ -70,4 +70,12 @@ endchoice
 
 source "drivers/mtd/spi-nor/controllers/Kconfig"
 
+config SPI_FLASH_LITEX
+	tristate "LiteX SPI Flash support"
+	depends on OF
+	depends on HAS_IOMEM
+	depends on LITEX_SOC_CONTROLLER
+	help
+	  Generic SPI Flash driver for LiteX
+
 endif # MTD_SPI_NOR
