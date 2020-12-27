@@ -167,14 +167,14 @@ static inline void litex_clk_set_reg(struct clk_hw *clk_hw, u32 reg, u32 val)
 {
 	struct litex_clk_clkout *l_clk = clk_hw_to_litex_clk_clkout(clk_hw);
 
-	litex_set_reg(l_clk->base + drp[reg].offset, drp[reg].size, val);
+	_litex_set_reg(l_clk->base + drp[reg].offset, drp[reg].size, val);
 }
 
 static inline u32 litex_clk_get_reg(struct clk_hw *clk_hw, u32 reg)
 {
 	struct litex_clk_clkout *l_clk = clk_hw_to_litex_clk_clkout(clk_hw);
 
-	return litex_get_reg(l_clk->base + drp[reg].offset, drp[reg].size);
+	return _litex_get_reg(l_clk->base + drp[reg].offset, drp[reg].size);
 }
 
 static inline void litex_clk_assert_reg(struct clk_hw *clk_hw, u32 reg)
