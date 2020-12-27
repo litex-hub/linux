@@ -39,10 +39,8 @@
 
 /* Macros for accessing ICAP registers */
 
-#define WRITE_SINK_DATA(mem, val)  litex_set_reg(mem + OFFSET_REG_SINK_DATA,  \
-						 REG_SINK_DATA_SIZE, val)
-#define READ_SINK_READY(mem)       litex_get_reg(mem + OFFSET_REG_SINK_READY, \
-						 REG_SINK_READY_SIZE)
+#define WRITE_SINK_DATA(mem, val) litex_write32(mem + OFFSET_REG_SINK_DATA, val)
+#define READ_SINK_READY(mem)      litex_read8(mem + OFFSET_REG_SINK_READY)
 
 struct litex_fpga {
 	void __iomem *membase;
