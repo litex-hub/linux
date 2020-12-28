@@ -66,7 +66,7 @@ static inline int litex_read_temp(struct litex_hwmon *hwmon_s, u32 attr,
 	if (channel != CHANNEL_TEMP)
 		return -EINVAL;
 
-	raw_data = litex_get_reg(hwmon_s->membase + TEMP_REG_OFFSET, TEMP_REG_SIZE);
+	raw_data = litex_read16(hwmon_s->membase + TEMP_REG_OFFSET);
 	*val = litex_temp_transfer_fun(raw_data);
 	return 0;
 }
@@ -75,7 +75,6 @@ static inline int litex_read_in(struct litex_hwmon *hwmon_s, u32 attr,
 				int channel, long *val)
 {
 	int offset;
-	int size;
 	unsigned long raw_data;
 
 	if (attr != hwmon_in_input)
@@ -84,21 +83,18 @@ static inline int litex_read_in(struct litex_hwmon *hwmon_s, u32 attr,
 	switch (channel) {
 	case CHANNEL_VCCINT:
 		offset = VCCINT_REG_OFFSET;
-		size = VCCINT_REG_SIZE;
 		break;
 	case CHANNEL_VCCAUX:
 		offset = VCCAUX_REG_OFFSET;
-		size = VCCAUX_REG_SIZE;
 		break;
 	case CHANNEL_VCCBRAM:
 		offset = VCCBRAM_REG_OFFSET;
-		size = VCCBRAM_REG_SIZE;
 		break;
 	default:
 		return -EINVAL;
 	}
 
-	raw_data = litex_get_reg(hwmon_s->membase + offset, size);
+	raw_data = litex_read16(hwmon_s->membase + offset);
 	*val = litex_supp_transfer_fun(raw_data);
 	return 0;
 }
