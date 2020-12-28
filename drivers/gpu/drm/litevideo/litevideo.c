@@ -73,24 +73,21 @@ static int litevideo_mmcm_write(struct litevideo_prv *prv, u32 addr, u32 data)
 {
 	/* write MMCM register address */
 
-	litex_set_reg(prv->base + LITEVIDEO_MMCM_ADDR_OFF,
-		      LITEVIDEO_MMCM_ADDR_SIZE, addr);
+	litex_write8(prv->base + LITEVIDEO_MMCM_ADDR_OFF, addr);
 
 	/* write data to send to MMCM register */
 
-	litex_set_reg(prv->base + LITEVIDEO_MMCM_DATA_OFF,
-		      LITEVIDEO_MMCM_DATA_SIZE, data);
+	litex_write16(prv->base + LITEVIDEO_MMCM_DATA_OFF, data);
 
 	/* send the data */
 
-	litex_set_reg(prv->base + LITEVIDEO_MMCM_WRITE_OFF,
-		      LITEVIDEO_MMCM_WRITE_SIZE, MMCM_WRITE);
+	litex_write8(prv->base + LITEVIDEO_MMCM_WRITE_OFF, MMCM_WRITE);
 
 	/* wait for transfer finish */
 
 	if (!wait_event_timeout(prv->wq,
-			     litex_get_reg(prv->base + LITEVIDEO_MMCM_READY_OFF,
-			     LITEVIDEO_MMCM_READY_SIZE), HZ))
+			litex_read8(prv->base + LITEVIDEO_MMCM_READY_OFF),
+			HZ))
 		return -ETIMEDOUT;
 
 	return 0;
@@ -159,45 +156,33 @@ static int litevideo_drv_init(struct litevideo_prv *prv, u32 m, u32 d)
 
 	/* timings - horizontal */
 
-	litex_set_reg(prv->base + LITEVIDEO_CORE_HRES_OFF,
-		      LITEVIDEO_CORE_HRES_SIZE, prv->h_active);
-	litex_set_reg(prv->base + LITEVIDEO_CORE_HSYNC_START_OFF,
-		      LITEVIDEO_CORE_HSYNC_START_SIZE,
+	litex_write16(prv->base + LITEVIDEO_CORE_HRES_OFF,
+		      prv->h_active);
+	litex_write16(prv->base + LITEVIDEO_CORE_HSYNC_START_OFF,
 		      prv->h_active + prv->h_front_porch);
-	litex_set_reg(prv->base + LITEVIDEO_CORE_HSYNC_END_OFF,
-		      LITEVIDEO_CORE_HSYNC_END_SIZE,
+	litex_write16(prv->base + LITEVIDEO_CORE_HSYNC_END_OFF,
 		      prv->h_active + prv->h_front_porch + prv->v_sync);
-	litex_set_reg(prv->base + LITEVIDEO_CORE_HSCAN_OFF,
-		      LITEVIDEO_CORE_HSCAN_SIZE,
+	litex_write16(prv->base + LITEVIDEO_CORE_HSCAN_OFF,
 		      prv->h_active + prv->h_blanking);
 
 	/* timings - vertical */
 
-	litex_set_reg(prv->base + LITEVIDEO_CORE_VRES_OFF,
-		      LITEVIDEO_CORE_VRES_SIZE, prv->v_active);
-	litex_set_reg(prv->base + LITEVIDEO_CORE_VSYNC_START_OFF,
-		      LITEVIDEO_CORE_VSYNC_START_SIZE,
+	litex_write16(prv->base + LITEVIDEO_CORE_VRES_OFF,
+		      prv->v_active);
+	litex_write16(prv->base + LITEVIDEO_CORE_VSYNC_START_OFF,
 		      prv->v_active + prv->v_front_porch);
-	litex_set_reg(prv->base + LITEVIDEO_CORE_VSYNC_END_OFF,
-		      LITEVIDEO_CORE_VSYNC_END_SIZE,
+	litex_write16(prv->base + LITEVIDEO_CORE_VSYNC_END_OFF,
 		      prv->v_active + prv->v_front_porch + prv->v_sync);
-	litex_set_reg(prv->base + LITEVIDEO_CORE_VSCAN_OFF,
-		      LITEVIDEO_CORE_VSCAN_SIZE,
+	litex_write16(prv->base + LITEVIDEO_CORE_VSCAN_OFF,
 		      prv->v_active + prv->v_blanking);
 
 	/* configure DMA */
 
-	litex_set_reg(prv->base + LITEVIDEO_DMA_ENABLE_OFF,
-		      LITEVIDEO_DMA_ENABLE_SIZE, DMA_DISABLE);
-
-	litex_set_reg(prv->base + LITEVIDEO_DMA_BASE_ADDR_OFF,
-		      LITEVIDEO_DMA_BASE_ADDR_SIZE, prv->dma_offset);
-
-	litex_set_reg(prv->base + LITEVIDEO_DMA_LENGTH_OFF,
-		      LITEVIDEO_DMA_LENGTH_SIZE, prv->dma_length);
-
-	litex_set_reg(prv->base + LITEVIDEO_DMA_ENABLE_OFF,
-		      LITEVIDEO_DMA_ENABLE_SIZE, DMA_ENABLE);
+	litex_write8(prv->base + LITEVIDEO_DMA_ENABLE_OFF, DMA_DISABLE);
+	// FIXME: gateware and this call should be updated to 64-bit base addr!
+	litex_write32(prv->base + LITEVIDEO_DMA_BASE_ADDR_OFF, prv->dma_offset);
+	litex_write32(prv->base + LITEVIDEO_DMA_LENGTH_OFF, prv->dma_length);
+	litex_write8(prv->base + LITEVIDEO_DMA_ENABLE_OFF, DMA_ENABLE);
 
 	return 0;
 }
