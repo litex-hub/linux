@@ -45,7 +45,7 @@ static int litex_gpio_get_value(struct gpio_chip *chip, unsigned int offset)
 	if (offset >= chip->ngpio)
 		return -EINVAL;
 
-	regv = litex_get_reg(gpio_s->membase, gpio_s->reg_span);
+	regv = _litex_get_reg(gpio_s->membase, gpio_s->reg_span);
 	return !!(regv & BIT(offset));
 }
 
@@ -58,7 +58,7 @@ static int litex_gpio_get_multiple(struct gpio_chip *chip, unsigned long *mask,
 	if (*mask >= (1 << chip->ngpio))
 		return -EINVAL;
 
-	regv = litex_get_reg(gpio_s->membase, gpio_s->reg_span);
+	regv = _litex_get_reg(gpio_s->membase, gpio_s->reg_span);
 	*bits = (regv & *mask);
 	return 0;
 }
@@ -72,9 +72,9 @@ static void litex_gpio_set_value(struct gpio_chip *chip, unsigned int offset,
 	if (offset >= chip->ngpio)
 		return;
 
-	regv = litex_get_reg(gpio_s->membase, gpio_s->reg_span);
+	regv = _litex_get_reg(gpio_s->membase, gpio_s->reg_span);
 	new_regv = (regv & ~BIT(offset)) | (!!val << offset);
-	litex_set_reg(gpio_s->membase, gpio_s->reg_span, new_regv);
+	_litex_set_reg(gpio_s->membase, gpio_s->reg_span, new_regv);
 }
 
 static void litex_gpio_set_multiple(struct gpio_chip *chip, unsigned long *mask,
@@ -86,9 +86,9 @@ static void litex_gpio_set_multiple(struct gpio_chip *chip, unsigned long *mask,
 	if (*mask >= (1 << chip->ngpio))
 		return;
 
-	regv = litex_get_reg(gpio_s->membase, gpio_s->reg_span);
+	regv = _litex_get_reg(gpio_s->membase, gpio_s->reg_span);
 	new_regv = (regv & ~(*mask)) | (*bits);
-	litex_set_reg(gpio_s->membase, gpio_s->reg_span, new_regv);
+	_litex_set_reg(gpio_s->membase, gpio_s->reg_span, new_regv);
 }
 
 static int litex_gpio_get_direction(struct gpio_chip *chip, unsigned int offset)
