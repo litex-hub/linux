@@ -51,16 +51,16 @@ static inline void litex_set_bit(void __iomem *mem, int bit, int val)
 {
 	u32 regv, new_regv;
 
-	regv = litex_get_reg(mem, REGISTER_SIZE);
+	regv = litex_read8(mem);
 	new_regv = (regv & ~BIT(bit)) | ((!!val) << bit);
-	litex_set_reg(mem, REGISTER_SIZE, new_regv);
+	litex_write8(mem, new_regv);
 }
 
 static inline int litex_get_bit(void __iomem *mem, int bit)
 {
 	u32 regv;
 
-	regv = litex_get_reg(mem, REGISTER_SIZE);
+	regv = litex_read8(mem);
 	return !!(regv & BIT(bit));
 }
 
