@@ -65,8 +65,8 @@ static int litex_pwm_config(struct pwm_chip *chip, struct pwm_device *pwm,
 	duty_cycles = c;
 
     /* Apply values to registers */
-	litex_set_reg(litex->width, 4, duty_cycles);
-	litex_set_reg(litex->period, 4, period_cycles);
+	litex_write32(litex->width, duty_cycles);
+	litex_write32(litex->period, period_cycles);
 
 	return 0;
 }
@@ -75,7 +75,7 @@ static int litex_pwm_enable(struct pwm_chip *chip, struct pwm_device *pwm)
 {
 	struct litex_pwm_chip *litex = to_litex_pwm_chip(chip);
 
-	litex_set_reg(litex->enable, 1, REG_EN_ENABLE);
+	litex_write8(litex->enable, REG_EN_ENABLE);
 	return 0;
 }
 
@@ -83,7 +83,7 @@ static void litex_pwm_disable(struct pwm_chip *chip, struct pwm_device *pwm)
 {
 	struct litex_pwm_chip *litex = to_litex_pwm_chip(chip);
 
-	litex_set_reg(litex->enable, 1, REG_EN_DISABLE);
+	litex_write8(litex->enable, REG_EN_DISABLE);
 }
 
 static const struct pwm_ops litex_pwm_ops = {
