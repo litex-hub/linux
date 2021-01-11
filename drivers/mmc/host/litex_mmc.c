@@ -80,7 +80,6 @@ struct litex_mmc_host {
 
 	unsigned int freq;
 	unsigned int clock;
-	unsigned char bus_width;
 	bool is_bus_width_set;
 	bool app_cmd;
 };
@@ -190,7 +189,8 @@ static int litex_set_bus_width(struct litex_mmc_host *host) {
 	if (!app_cmd_sent)
 		send_app_cmd(host);
 
-	status = send_app_set_bus_width_cmd(host, host->bus_width);
+	/* litesdcard only supports 4-bit bus width */
+	status = send_app_set_bus_width_cmd(host, MMC_BUS_WIDTH_4);
 
 	/* re-send 'app_cmd' if necessary */
 	if (app_cmd_sent)
@@ -247,8 +247,11 @@ static void litex_request(struct mmc_host *mmc, struct mmc_request *mrq)
 	}
 
 	if (data) {
-		// This is a good time (i.e. last moment) to finally set bus
-		// width. Ofc if not set yet.
+		/* LiteSDCard only supports 4-bit bus width; therefore, we MUST
+		 * inject a SET_BUS_WIDTH (acmd6) before the very first data
+		 * transfer, earlier than when the mmc subsystem would normally
+		 * get around to it!
+		 */
 		if (!host->is_bus_width_set) {
 			ulong n = jiffies + 2 * HZ; // 500ms timeout
 			while (litex_set_bus_width(host) != SD_OK) {
@@ -356,17 +359,18 @@ static void litex_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 {
 	struct litex_mmc_host *host = mmc_priv(mmc);
 
+	/* updated ios->bus_width -- do nothing;
+	 * This happens right after the mmc core subsystem has sent its
+	 * own acmd6 to notify the card of the bus-width change, and it's
+	 * effectively a no-op given that we already forced bus-width to 4
+	 * by snooping on the command flow, and inserting an acmd6 before
+	 * the first data xfer comand!
+	 */
+
 	if (ios->clock != host->clock) {
 		sdclk_set_clk(host, ios->clock);
 		host->clock = ios->clock;
 	}
-
-	// Technically there should be some code forsetting requested bus width.
-	// We can't send "send_bus_width" command to the card at this moment
-	// because the card is not in the right state (the command is only accepted
-	// in "trans" state). Requested width should be stored and send when it is
-	// possible (see litex_request), but litesdcard supports only 4 bit bus
-	// width, so it is known what must be set.
 }
 
 static const struct mmc_host_ops litex_mmc_ops = {
@@ -418,8 +422,10 @@ static int litex_mmc_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_exit;
 
-	// litesdcard only supports 4-bit bus width
-	host->bus_width = MMC_BUS_WIDTH_4;
+	/* LiteSDCard only supports 4-bit bus width; therefore, we MUST inject
+	 * a SET_BUS_WIDTH (acmd6) before the very first data transfer, earlier
+	 * than when the mmc subsystem would normally get around to it!
+	 */
 	host->is_bus_width_set = false;
 	host->app_cmd = false;
 
