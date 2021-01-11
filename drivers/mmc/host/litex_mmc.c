@@ -58,10 +58,6 @@
 #define SD_TIMEOUT    2
 #define SD_WRITEERROR 3
 
-#define MAX_NR_SEGS       1
-#define MAX_NR_BLOCKS     1
-#define DATA_BLOCK_SIZE 512
-
 struct litex_mmc_host {
 	struct mmc_host *mmc;
 	struct platform_device *dev;
@@ -345,7 +341,7 @@ static void litex_request(struct mmc_host *mmc, struct mmc_request *mrq)
 
 	if (status == SD_OK && transfer != SDCARD_CTRL_DATA_TRANSFER_NONE) {
 		data->bytes_xfered = min(data->blksz * data->blocks,
-				(u32)(MAX_NR_BLOCKS*DATA_BLOCK_SIZE));
+					mmc->max_req_size);
 		if (transfer == SDCARD_CTRL_DATA_TRANSFER_READ) {
 			sg_copy_from_buffer(data->sg, sg_nents(data->sg),
 				host->buffer, data->bytes_xfered);
@@ -409,6 +405,15 @@ static int litex_mmc_probe(struct platform_device *pdev)
 	mmc = mmc_alloc_host(sizeof(struct litex_mmc_host), &pdev->dev);
 	if (!mmc)
 		return -ENOMEM;
+	/* FIXME: mmc_alloc_host() defaults to max_[req,seg]_size=PAGE_SIZE,
+	 * max_blk_size=512, and sets max_blk_count accordingly (to 8);
+	 * However, using multi-block transfers results in DMA timeout errors,
+	 * which is something that requires further investigation!
+	 */
+	mmc->max_blk_count = 1; /* only single-block transfers currently work */
+	/* recalculate max_[req,seg]_size given new max_blk_count */
+	mmc->max_req_size = mmc->max_blk_size * mmc->max_blk_count;
+	mmc->max_seg_size = mmc->max_req_size;
 
 	host = mmc_priv(mmc);
 	host->mmc = mmc;
@@ -434,7 +439,7 @@ static int litex_mmc_probe(struct platform_device *pdev)
 		goto err_exit;
 	}
 
-	host->buffer_size = MAX_NR_BLOCKS * DATA_BLOCK_SIZE * 2;
+	host->buffer_size = mmc->max_req_size * 2;
 	host->buffer = dma_alloc_coherent(&pdev->dev, host->buffer_size,
 					  &host->dma_handle, GFP_DMA);
 	if (host->buffer == NULL)
@@ -457,12 +462,6 @@ static int litex_mmc_probe(struct platform_device *pdev)
 		     MMC_CAP2_NO_WRITE_PROTECT;
 	mmc->ops = &litex_mmc_ops;
 	mmc->ocr_avail = MMC_VDD_32_33 | MMC_VDD_33_34;
-
-	mmc->max_blk_size = DATA_BLOCK_SIZE;
-	mmc->max_blk_count = MAX_NR_BLOCKS;
-	mmc->max_req_size = mmc->max_blk_size * mmc->max_blk_count;
-	mmc->max_segs = MAX_NR_SEGS;
-	mmc->max_seg_size = 512;
 
 	mmc->f_min = 125 * 1e5; // sys_clk/256 is minimal frequency mmcm can produce, set minimal to 12.5Mhz on lower frequencies, sdcard sometimes do not initialize properly
 	mmc->f_max = 50 * 1e6; // 50Mhz is max frequency sd card can support
