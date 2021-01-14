@@ -381,6 +381,7 @@ static const struct mmc_host_ops litex_mmc_ops = {
 	host->res_name = devm_ioremap_resource(&pdev->dev, res); \
 	if (IS_ERR(host->res_name)) { \
 		ret = PTR_ERR(host->res_name); \
+		pr_err("MAP_RESOURCE %d failed\n", idx); \
 		goto err_exit; \
 	} \
 }
@@ -424,8 +425,10 @@ static int litex_mmc_probe(struct platform_device *pdev)
 	cpu = of_find_node_by_name(NULL, "cpu");
 	ret = of_property_read_u32(cpu, "clock-frequency", &host->freq);
 	of_node_put(cpu);
-	if (ret)
+	if (ret) {
+		pr_err("Couldn't find \"clock-frequency\" property in DT\n");
 		goto err_exit;
+	}
 
 	/* LiteSDCard only supports 4-bit bus width; therefore, we MUST inject
 	 * a SET_BUS_WIDTH (acmd6) before the very first data transfer, earlier
@@ -436,14 +439,18 @@ static int litex_mmc_probe(struct platform_device *pdev)
 
 	if (dma_set_mask(&pdev->dev, DMA_BIT_MASK(32))){
 		pr_err("Unable to set DMA driver failed\n");
+		ret = -EINVAL;
 		goto err_exit;
 	}
 
 	host->buffer_size = mmc->max_req_size * 2;
 	host->buffer = dma_alloc_coherent(&pdev->dev, host->buffer_size,
 					  &host->dma_handle, GFP_DMA);
-	if (host->buffer == NULL)
+	if (host->buffer == NULL) {
+		pr_err("could not allocate dma buffer\n");
+		ret = -ENOMEM;
 		goto err_exit;
+	}
 
 	MAP_RESOURCE(sdphy, 0);
 	MAP_RESOURCE(sdcore, 1);
@@ -451,8 +458,10 @@ static int litex_mmc_probe(struct platform_device *pdev)
 	MAP_RESOURCE(sdwriter, 3);
 
 	ret = mmc_of_parse(mmc);
-	if (ret)
+	if (ret) {
+		pr_err("couldn't parse DT node\n");
 		goto err_exit;
+	}
 
 	/* add set-by-default capabilities */
 	mmc->caps |= MMC_CAP_WAIT_WHILE_BUSY | MMC_CAP_DRIVER_TYPE_D;
@@ -473,6 +482,7 @@ static int litex_mmc_probe(struct platform_device *pdev)
 
 	ret = mmc_add_host(mmc);
 	if (ret < 0) {
+		pr_err("mmc_add_host() failed\n");
 		goto err_exit;
 	}
 
