@@ -85,6 +85,7 @@ struct litex_mmc_host {
 void sdclk_set_clk(struct litex_mmc_host *host, unsigned int clk_freq) {
 	u32 div = clk_freq ? host->freq / clk_freq : 256;
 	div = roundup_pow_of_two(div);
+	div <<= 1;
 	div = min(max(div, (u32)2), (u32)256);
 	dev_info(&host->dev->dev,
 		"Requested clk_freq=%d: set to %d via div=%d\n",
