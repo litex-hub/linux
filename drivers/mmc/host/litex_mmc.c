@@ -54,9 +54,10 @@
 #define SDCARD_CTRL_RESPONSE_LONG  2
 
 #define SD_OK         0
-#define SD_CRCERROR   1
+#define SD_WRITEERROR 1
 #define SD_TIMEOUT    2
-#define SD_WRITEERROR 3
+#define SD_CRCERROR   3
+#define SD_ERR_OTHER  4
 
 struct litex_mmc_host {
 	struct mmc_host *mmc;
@@ -100,11 +101,16 @@ static int sdcard_wait_done(void __iomem *reg) {
 			break;
 		udelay(5);
 	}
+	if (evt == 0x1)
+		return SD_OK;
+	if (evt & 0x2)
+		return SD_WRITEERROR;
 	if (evt & 0x4)
 		return SD_TIMEOUT;
 	if (evt & 0x8)
 		return SD_CRCERROR;
-	return SD_OK;
+	pr_err("sdcard_wait_done: unknown error evt=%x\n", evt);
+	return SD_ERR_OTHER;
 }
 
 static int send_cmd(struct litex_mmc_host *host, u8 cmd, u32 arg,
@@ -314,14 +320,14 @@ static void litex_request(struct mmc_host *mmc, struct mmc_request *mrq)
 	case SD_OK:
 		cmd->error = 0;
 		break;
+	case SD_WRITEERROR:
+		cmd->error = -EIO;
+		break;
 	case SD_TIMEOUT:
 		cmd->error = -ETIMEDOUT;
 		break;
 	case SD_CRCERROR:
 		cmd->error = -EILSEQ;
-		break;
-	case SD_WRITEERROR:
-		cmd->error = -EINVAL;
 		break;
 	default:
 		cmd->error = -EINVAL;
