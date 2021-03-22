@@ -169,6 +169,13 @@ static int send_cmd(struct litex_mmc_host *host, u8 cmd, u32 arg,
 	return status;
 }
 
+// CMD12
+static inline int send_stop_tx_cmd(struct litex_mmc_host *host) {
+	return send_cmd(host, MMC_STOP_TRANSMISSION, 0,
+			SDCARD_CTRL_RESPONSE_SHORT,
+			SDCARD_CTRL_DATA_TRANSFER_NONE);
+}
+
 // CMD55
 static inline int send_app_cmd(struct litex_mmc_host *host) {
 	return send_cmd(host, MMC_APP_CMD, host->rca << 16,
@@ -317,6 +324,16 @@ static void litex_request(struct mmc_host *mmc, struct mmc_request *mrq)
 				response_len, transfer);
 	} while (status != SD_OK && retries-- > 0);
 
+	/* Each multi-block data transfer MUST be followed by a cmd12
+	 * (MMC_STOP_TRANSMISSION).
+	 * FIXME: figure out why we need to do this here explicitly, and
+	 * whether there's a way (e.g., capability flag, possibly set via
+	 * some DT property) to get the driver to do this automatically!
+	 */
+	if (cmd->opcode == MMC_READ_MULTIPLE_BLOCK ||
+	    cmd->opcode == MMC_WRITE_MULTIPLE_BLOCK)
+		send_stop_tx_cmd(host);
+
 	switch (status) {
 	case SD_OK:
 		cmd->error = 0;
@@ -411,17 +428,13 @@ static int litex_mmc_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	mmc = mmc_alloc_host(sizeof(struct litex_mmc_host), &pdev->dev);
+	/* NOTE: mmc_alloc_host() defaults to max_[req,seg]_size=PAGE_SIZE,
+	 * max_blk_size=512, and sets max_blk_count accordingly (to 8); If,
+	 * for some reason, we want to modify max_blk_count, we must also
+	 * re-calculate max_[req,seg]_size=max_blk_size*max_blk_count!
+	 */
 	if (!mmc)
 		return -ENOMEM;
-	/* FIXME: mmc_alloc_host() defaults to max_[req,seg]_size=PAGE_SIZE,
-	 * max_blk_size=512, and sets max_blk_count accordingly (to 8);
-	 * However, using multi-block transfers results in DMA timeout errors,
-	 * which is something that requires further investigation!
-	 */
-	mmc->max_blk_count = 1; /* only single-block transfers currently work */
-	/* recalculate max_[req,seg]_size given new max_blk_count */
-	mmc->max_req_size = mmc->max_blk_size * mmc->max_blk_count;
-	mmc->max_seg_size = mmc->max_req_size;
 
 	host = mmc_priv(mmc);
 	host->mmc = mmc;
