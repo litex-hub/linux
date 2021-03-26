@@ -23,31 +23,27 @@ properties:
     description: Base address and lengths of the register space
 
   "#clock-cells":
-    description: |
+    description:
       Number of cells in a clock specifier;
       Typically 0 for nodes with a single clock output
       and 1 for nodes with multiple clock outputs.
-
     const: 1
 
   "#address-cells":
-    description: |
+    description:
       Number of cells that are needed to form the base address
       part in the reg property.
-
     const: 1
 
   "#size-cells":
-    description: |
+    description:
       Used to state how many cells are in each field of a reg property
-
     const: 0
 
   clock-output-names:
-    description: |
+    description:
       List of strings of clock output signal names indexed
       by the first cell in the clock specifier.
-
     minItems: 1
     maxItems: 7
     items:
@@ -60,67 +56,61 @@ properties:
       - const: CLKOUT6
 
   litex,nclkout:
-    description: |
-      Number of desired clock outputs
-
-        min: 1
-        max: 7
+    description: Number of desired clock outputs
+    $ref: /schemas/types.yaml#/definitions/uint32
+    minimum: 1
+    maximum: 7
 
   litex,lock-timeout:
-    description: |
-      Number of ms to wait for MMCM to assert LOCK signal
-
-        min: 1
+    description: Number of ms to wait for MMCM to assert LOCK signal
+    $ref: /schemas/types.yaml#/definitions/uint32
+    minimum: 1
 
   litex,drdy-timeout:
-    description: |
-      Number of ms to wait for MMCM to assert DRDY signal
-
-        min: 1
+    description: Number of ms to wait for MMCM to assert DRDY signal
+    $ref: /schemas/types.yaml#/definitions/uint32
+    minimum: 1
 
   litex,sys-clock-freq:
-    description: |
-      System clock frequency
+    description: System clock frequency
+    $ref: /schemas/types.yaml#/definitions/uint32
 
-  CLKOUTx:
-    description: |
+patternProperties:
+  "^CLKOUT[0-6]$":
+    description:
       Child node representing configurable clock outputs of MMCM unit
+    type: object
 
     properties:
       compatible:
         const: litex,clock
 
       reg:
-        description: |
-          clock output ID, zero-based numbering
+        description: clock output ID, zero-based numbering
 
       litex,clock-frequency:
-        description: |
-          default frequency in Hz for clock output
-
-        min: 1587000
-        max: 100000000
+        description: default frequency in Hz for clock output
+        $ref: /schemas/types.yaml#/definitions/uint32
+        minimum: 1587000
+        maximum: 100000000
 
       litex,clock-phase:
-        description: |
-          default phase offset given in degrees
-
-        min: 0
-        max: 359
+        description: default phase offset given in degrees
+        $ref: /schemas/types.yaml#/definitions/uint32
+        minimum: 0
+        maximum: 359
 
       litex,clock-duty-num:
-        description: |
-          default duty cycle numerator value
-
-        min: 1
-        max: 100
+        description: default duty cycle numerator value
+        $ref: /schemas/types.yaml#/definitions/uint32
+        minimum: 1
+        maximum: 100
 
       litex,clock-duty-den:
-        description: |
-          default duty cycle denominator value
-
-        min: 1
-        max: 100
+        description: default duty cycle denominator value
+        $ref: /schemas/types.yaml#/definitions/uint32
+        minimum: 1
+        maximum: 100
 
     required:
       - compatible
@@ -142,11 +132,13 @@ required:
   - litex,nclkout
   - CLKOUTx
 
+additionalProperties: false
+
 examples:
   - |
-    clk0: clk@f0003000 {
+    clk0: clock-controller@f0003000 {
             compatible = "litex,clk";
-            reg = <0x0 0xf0003000 0x0 0x100>;
+            reg = <0x0 0xf0003000>, <0x0 0x100>;
             #clock-cells =        <1>;
             #address-cells = <1>;
             #size-cells = <0>;
@@ -159,7 +151,7 @@ examples:
                                  "CLKOUT6";
             litex,nclkout = <7>;
 
-            CLKOUT0: CLKOUT0 {
+            CLKOUT0: CLKOUT0@0 {
                     compatible = "litex,clk";
                     #clock-cells = <0>;
                     clock-output-names = "CLKOUT0";
@@ -169,7 +161,7 @@ examples:
                     litex,clock-duty = <50>;
             };
 
-            CLKOUT1: CLKOUT1 {
+            CLKOUT1: CLKOUT1@1 {
                     compatible = "litex,clk";
                     #clock-cells = <0>;
                     clock-output-names = "CLKOUT1";
@@ -179,7 +171,7 @@ examples:
                     litex,clock-duty = <50>;
             };
 
-            CLKOUT2: CLKOUT2 {
+            CLKOUT2: CLKOUT2@2 {
                     compatible = "litex,clk";
                     #clock-cells = <0>;
                     clock-output-names = "CLKOUT2";
@@ -189,7 +181,7 @@ examples:
                     litex,clock-duty = <25>;
             };
 
-            CLKOUT3: CLKOUT3 {
+            CLKOUT3: CLKOUT3@3 {
                     compatible = "litex,clk";
                     #clock-cells = <0>;
                     clock-output-names = "CLKOUT3";
@@ -199,7 +191,7 @@ examples:
                     litex,clock-duty = <75>;
             };
 
-            CLKOUT4: CLKOUT4 {
+            CLKOUT4: CLKOUT4@4 {
                     compatible = "litex,clk";
                     #clock-cells = <0>;
                     clock-output-names = "CLKOUT4";
@@ -209,7 +201,7 @@ examples:
                     litex,clock-duty = <50>;
             };
 
-            CLKOUT5: CLKOUT5 {
+            CLKOUT5: CLKOUT5@5 {
                     compatible = "litex,clk";
                     #clock-cells = <0>;
                     clock-output-names = "CLKOUT5";
@@ -219,7 +211,7 @@ examples:
                     litex,clock-duty = <50>;
             };
 
-            CLKOUT6: CLKOUT6 {
+            CLKOUT6: CLKOUT6@6 {
                     compatible = "litex,clk";
                     #clock-cells = <0>;
                     clock-output-names = "CLKOUT6";
