@@ -2,7 +2,7 @@
 
 %YAML 1.2
 ---
-$id: http://devicetree.org/schemas/serial/litex,spiflash.yaml#
+$id: http://devicetree.org/schemas/mtd/litex,spiflash.yaml#
 $schema: http://devicetree.org/meta-schemas/core.yaml#
 
 title: LiteX SPI Flash controller
@@ -14,6 +14,9 @@ maintainers:
 description: |
   LiteX SPI Flash controller is a part of LiteX FPGA SoC builder. It supports
   multiple CPU architectures, currently including e.g. OpenRISC and RISC-V.
+
+allOf:
+  - $ref: "/schemas/spi/spi-controller.yaml#"
 
 properties:
   compatible:
@@ -29,13 +32,26 @@ required:
   - compatible
   - reg
 
+patternProperties:
+  "flash@[0-9a-f]+$":
+    type: object
+    properties:
+      compatible:
+        enum:
+          - jedec,spi-nor
+
+unevaluatedProperties: false
+
 examples:
   - |
-    spiflash: spiflash@f0005800 {
-      compatible = "litex,spiflash";
-      reg = <0xf0005800 0xc>;
-      flash: flash@0 {
-        compatible = "jedec,spi-nor";
-        reg = <0x0 0x1000000>;
-      };
+    spiflash: spi@f0005800 {
+            compatible = "litex,spiflash";
+            reg = <0xf0005800 0xc>;
+            #address-cells = <1>;
+            #size-cells = <0>;
+
+            flash: flash@0 {
+                    compatible = "jedec,spi-nor";
+                    reg = <0>;
+            };
     };
