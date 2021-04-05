@@ -5,6 +5,32 @@ Required properties:
 - reg: base address and length of the register
 - litex,ngpio: number of gpio pins in port
 - litex,direction: direction of gpio port, should be "in" or "out"
+- gpio-controller: Marks the device node as a GPIO controller.
+- #gpio-cells:
+	Single-cell integer.
+	Must be <2>.
+	Indicates how many cells are used in a consumer's GPIO specifier.
+	In the specifier:
+		- The first cell is the pin number.
+		- The second cell contains flags:
+			- Bit 0 specifies polarity
+				- 0: Active-high (normal).
+				- 1: Active-low (inverted).
+Optional properites:
+- interrupt-controller: Marks the device node as an interrupt controller.
+- #interrupt-cells
+	Single-cell integer.
+	Must be <2>.
+	Indicates how many cells are used in a consumer's interrupt specifier.
+	In the specifier:
+		- The first cell is the GPIO number.
+		- The second cell is contains flags:
+			- Bits [1:0] indicate trigger type:
+				- 0: Low-to-high edge triggered.
+				- 1: High-to-low edge triggered.
+				Valid combinations of values are 1, 2, 3.
+- interrupt-parent : The parent interrupt controller.
+- interrupts: Interrupt number in the parent controller.
 
 Examples:
 
@@ -13,6 +39,12 @@ gpio@f0003000 {
 	reg = <0x0 0xf0003800 0x0 0x1>;
 	litex,ngpio = <4>;
 	litex,direction = "in";
+	gpio-controller;
+	#gpio-cells = <2>;
+	interrupt-controller;
+	#interrupt-cells = <2>;
+	interrupt-parent = <&intc0>;
+	interrupts = <4>;
 };
 
 gpio@f0003800 {
