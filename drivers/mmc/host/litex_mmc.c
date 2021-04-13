@@ -168,13 +168,6 @@ static int send_cmd(struct litex_mmc_host *host, u8 cmd, u32 arg,
 	return status;
 }
 
-// CMD12
-static inline int send_stop_tx_cmd(struct litex_mmc_host *host) {
-	return send_cmd(host, MMC_STOP_TRANSMISSION, 0,
-			SDCARD_CTRL_RESPONSE_SHORT,
-			SDCARD_CTRL_DATA_TRANSFER_NONE);
-}
-
 // CMD55
 static inline int send_app_cmd(struct litex_mmc_host *host) {
 	return send_cmd(host, MMC_APP_CMD, host->rca << 16,
@@ -232,6 +225,43 @@ static int litex_get_cd(struct mmc_host *mmc)
 	return ret;
 }
 
+static u32 litex_response_len(struct mmc_command *cmd)
+{
+	u32 response_len = SDCARD_CTRL_RESPONSE_NONE;
+
+	if (cmd->flags & MMC_RSP_136) {
+		response_len = SDCARD_CTRL_RESPONSE_LONG;
+	} else if (cmd->flags & MMC_RSP_PRESENT) {
+		response_len = SDCARD_CTRL_RESPONSE_SHORT;
+	}
+
+	return response_len;
+}
+
+static int litex_map_status(int status)
+{
+	int error;
+
+	switch (status) {
+	case SD_OK:
+		error = 0;
+		break;
+	case SD_WRITEERROR:
+		error = -EIO;
+		break;
+	case SD_TIMEOUT:
+		error = -ETIMEDOUT;
+		break;
+	case SD_CRCERROR:
+		error = -EILSEQ;
+		break;
+	default:
+		error = -EINVAL;
+		break;
+	}
+	return error;
+}
+
 /*
  * Send request to a card. Command, data transfer, things like this.
  * Call mmc_request_done() when finished.
@@ -242,17 +272,32 @@ static void litex_request(struct mmc_host *mmc, struct mmc_request *mrq)
 	struct platform_device *pdev = to_platform_device(mmc->parent);
 	struct device *dev = &pdev->dev;
 	struct mmc_data *data = mrq->data;
+	struct mmc_command *sbc = mrq->sbc;
 	struct mmc_command *cmd = mrq->cmd;
+	struct mmc_command *stop = mrq->stop;
 	unsigned int retries = cmd->retries;
 	int status;
+	int sg_count;
+	enum dma_data_direction dir = DMA_TO_DEVICE;
+	bool direct = false;
+	dma_addr_t dma_handle;
+	unsigned int length = 0;
 
-	u32 response_len = SDCARD_CTRL_RESPONSE_NONE;
+	u32 response_len = litex_response_len(cmd);
 	u32 transfer = SDCARD_CTRL_DATA_TRANSFER_NONE;
 
-	if (cmd->flags & MMC_RSP_136) {
-		response_len = SDCARD_CTRL_RESPONSE_LONG;
-	} else if (cmd->flags & MMC_RSP_PRESENT) {
-		response_len = SDCARD_CTRL_RESPONSE_SHORT;
+	/*
+	 * Send set-block-count command if needed.
+	 */
+	if (sbc) {
+		status = send_cmd(host, sbc->opcode, sbc->arg,
+				  litex_response_len(sbc),
+				  SDCARD_CTRL_DATA_TRANSFER_NONE);
+		sbc->error = litex_map_status(status);
+		if (status != SD_OK) {
+			mmc_request_done(mmc, mrq);
+			return;
+		}
 	}
 
 	if (data) {
@@ -274,35 +319,51 @@ static void litex_request(struct mmc_host *mmc, struct mmc_request *mrq)
 			host->is_bus_width_set = true;
 		}
 
-		if (mrq->data->flags & MMC_DATA_READ) {
+		/*
+		 * Try to DMA directly to/from the data buffer.
+		 * We can do that if the buffer can be mapped for DMA
+		 * in one contiguous chunk.
+		 */
+		dma_handle = host->dma_handle;
+		length = data->blksz * data->blocks;
+		if (data->flags & MMC_DATA_READ)
+			dir = DMA_FROM_DEVICE;
+		sg_count = dma_map_sg(&host->dev->dev, data->sg, data->sg_len,
+				      dir);
+		if (sg_count == 1) {
+			dma_handle = sg_dma_address(data->sg);
+			length = sg_dma_len(data->sg);
+			direct = true;
+		} else if (length > host->buffer_size)
+			length = host->buffer_size;
+
+		if (data->flags & MMC_DATA_READ) {
 			litex_write8(host->sdreader +
 					 LITEX_MMC_SDBLK2MEM_ENA_OFF, 0);
 			litex_write64(host->sdreader +
 					 LITEX_MMC_SDBLK2MEM_BASE_OFF,
-					 host->dma_handle);
+					 dma_handle);
 			litex_write32(host->sdreader +
 					 LITEX_MMC_SDBLK2MEM_LEN_OFF,
-					 data->blksz * data->blocks);
+					 length);
 			litex_write8(host->sdreader +
 					 LITEX_MMC_SDBLK2MEM_ENA_OFF, 1);
 
 			transfer = SDCARD_CTRL_DATA_TRANSFER_READ;
 
-		} else if (mrq->data->flags & MMC_DATA_WRITE) {
-			int write_length = min(data->blksz * data->blocks,
-					       (u32)host->buffer_size);
-
-			sg_copy_to_buffer(data->sg, data->sg_len,
-					host->buffer, write_length);
+		} else if (data->flags & MMC_DATA_WRITE) {
+			if (!direct)
+				sg_copy_to_buffer(data->sg, data->sg_len,
+					host->buffer, length);
 
 			litex_write8(host->sdwriter +
 					 LITEX_MMC_SDMEM2BLK_ENA_OFF, 0);
 			litex_write64(host->sdwriter +
 					 LITEX_MMC_SDMEM2BLK_BASE_OFF,
-					 host->dma_handle);
+					 dma_handle);
 			litex_write32(host->sdwriter +
 					 LITEX_MMC_SDMEM2BLK_LEN_OFF,
-					 write_length);
+					 length);
 			litex_write8(host->sdwriter +
 					 LITEX_MMC_SDMEM2BLK_ENA_OFF, 1);
 
@@ -323,33 +384,7 @@ static void litex_request(struct mmc_host *mmc, struct mmc_request *mrq)
 				response_len, transfer);
 	} while (status != SD_OK && retries-- > 0);
 
-	/* Each multi-block data transfer MUST be followed by a cmd12
-	 * (MMC_STOP_TRANSMISSION).
-	 * FIXME: figure out why we need to do this here explicitly, and
-	 * whether there's a way (e.g., capability flag, possibly set via
-	 * some DT property) to get the driver to do this automatically!
-	 */
-	if (cmd->opcode == MMC_READ_MULTIPLE_BLOCK ||
-	    cmd->opcode == MMC_WRITE_MULTIPLE_BLOCK)
-		send_stop_tx_cmd(host);
-
-	switch (status) {
-	case SD_OK:
-		cmd->error = 0;
-		break;
-	case SD_WRITEERROR:
-		cmd->error = -EIO;
-		break;
-	case SD_TIMEOUT:
-		cmd->error = -ETIMEDOUT;
-		break;
-	case SD_CRCERROR:
-		cmd->error = -EILSEQ;
-		break;
-	default:
-		cmd->error = -EINVAL;
-		break;
-	}
+	cmd->error = litex_map_status(status);
 
 	// It looks strange I know, but it's as it should be
 	if (response_len == SDCARD_CTRL_RESPONSE_SHORT) {
@@ -362,10 +397,23 @@ static void litex_request(struct mmc_host *mmc, struct mmc_request *mrq)
 		cmd->resp[3] = host->resp[3];
 	}
 
+	/*
+	 * Send stop-transmission command if required.
+	 */
+	if (stop && (cmd->error || !sbc)) {
+		int stop_stat;
+		stop_stat = send_cmd(host, stop->opcode, stop->arg,
+				     litex_response_len(stop),
+				     SDCARD_CTRL_DATA_TRANSFER_NONE);
+		stop->error = litex_map_status(stop_stat);
+	}
+
+	if (data)
+		dma_unmap_sg(&host->dev->dev, data->sg, data->sg_len, dir);
+
 	if (status == SD_OK && transfer != SDCARD_CTRL_DATA_TRANSFER_NONE) {
-		data->bytes_xfered = min(data->blksz * data->blocks,
-					mmc->max_req_size);
-		if (transfer == SDCARD_CTRL_DATA_TRANSFER_READ) {
+		data->bytes_xfered = min(length, mmc->max_req_size);
+		if (transfer == SDCARD_CTRL_DATA_TRANSFER_READ && !direct) {
 			sg_copy_from_buffer(data->sg, sg_nents(data->sg),
 				host->buffer, data->bytes_xfered);
 		}
@@ -441,7 +489,7 @@ static int litex_mmc_probe(struct platform_device *pdev)
 	// Initial state
 	host->clock = 0;
 
-	cpu = of_find_node_by_name(NULL, "cpu");
+	cpu = of_get_next_cpu_node(NULL);
 	ret = of_property_read_u32(cpu, "clock-frequency", &host->freq);
 	of_node_put(cpu);
 	if (ret) {
@@ -476,6 +524,12 @@ static int litex_mmc_probe(struct platform_device *pdev)
 	MAP_RESOURCE(sdreader, 2);
 	MAP_RESOURCE(sdwriter, 3);
 
+	mmc->ocr_avail = MMC_VDD_32_33 | MMC_VDD_33_34;
+	mmc->ops = &litex_mmc_ops;
+
+	mmc->f_min = 12.5e6;
+	mmc->f_max = 50e6; // 50Mhz is max frequency sd card can support
+
 	ret = mmc_of_parse(mmc);
 	if (ret) {
 		pr_err("couldn't parse DT node\n");
@@ -483,19 +537,14 @@ static int litex_mmc_probe(struct platform_device *pdev)
 	}
 
 	/* add set-by-default capabilities */
-	mmc->caps |= MMC_CAP_WAIT_WHILE_BUSY | MMC_CAP_DRIVER_TYPE_D;
+	mmc->caps |= MMC_CAP_WAIT_WHILE_BUSY | MMC_CAP_DRIVER_TYPE_D |
+		MMC_CAP_CMD23;
 	/* FIXME: set "broken-cd" in dt, or somehow handle through irq? */
 	mmc->caps |= MMC_CAP_NEEDS_POLL;
 	/* default to "disable-wp", "full-pwr-cycle", "no-sdio" */
 	mmc->caps2 |= MMC_CAP2_NO_WRITE_PROTECT |
 		      MMC_CAP2_FULL_PWR_CYCLE |
 		      MMC_CAP2_NO_SDIO;
-
-	mmc->ocr_avail = MMC_VDD_32_33 | MMC_VDD_33_34;
-	mmc->ops = &litex_mmc_ops;
-
-	mmc->f_min = 125 * 1e5; // sys_clk/256 is minimal frequency mmcm can produce, set minimal to 12.5Mhz on lower frequencies, sdcard sometimes do not initialize properly
-	mmc->f_max = 50 * 1e6; // 50Mhz is max frequency sd card can support
 
 	platform_set_drvdata(pdev, host);
 
