@@ -295,6 +295,7 @@ static void litex_request(struct mmc_host *mmc, struct mmc_request *mrq)
 				  SDCARD_CTRL_DATA_TRANSFER_NONE);
 		sbc->error = litex_map_status(status);
 		if (status != SD_OK) {
+			host->is_bus_width_set = false;
 			mmc_request_done(mmc, mrq);
 			return;
 		}
@@ -385,6 +386,9 @@ static void litex_request(struct mmc_host *mmc, struct mmc_request *mrq)
 	} while (status != SD_OK && retries-- > 0);
 
 	cmd->error = litex_map_status(status);
+	if (status != SD_OK)
+		/* card may be gone; don't assume bus width is still set */
+		host->is_bus_width_set = false;
 
 	// It looks strange I know, but it's as it should be
 	if (response_len == SDCARD_CTRL_RESPONSE_SHORT) {
@@ -406,6 +410,8 @@ static void litex_request(struct mmc_host *mmc, struct mmc_request *mrq)
 				     litex_response_len(stop),
 				     SDCARD_CTRL_DATA_TRANSFER_NONE);
 		stop->error = litex_map_status(stop_stat);
+		if (stop_stat != SD_OK)
+			host->is_bus_width_set = false;
 	}
 
 	if (data)
