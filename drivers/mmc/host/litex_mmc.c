@@ -89,6 +89,7 @@ struct litex_mmc_host {
 	bool app_cmd;
 
 	int irq;
+	struct completion cmd_done;
 };
 
 
@@ -135,7 +136,21 @@ static int send_cmd(struct litex_mmc_host *host, u8 cmd, u32 arg,
 			 cmd << 8 | transfer << 5 | response_len);
 	litex_write8(host->sdcore + LITEX_MMC_SDCORE_CMDSND_OFF, 1);
 
+	/*
+	 * Wait for an interrupt if we have an interrupt and either there is
+	 * data to be transferred, or if the card can report busy via DAT0.
+	 */
+	if (host->irq > 0 &&
+	    (transfer != SDCARD_CTRL_DATA_TRANSFER_NONE ||
+	     response_len == SDCARD_CTRL_RESPONSE_SHORT_BUSY)) {
+		reinit_completion(&host->cmd_done);
+		litex_write32(host->sdirq + LITEX_MMC_SDIRQ_ENABLE_OFF,
+			      SDIRQ_CMD_DONE | SDIRQ_CARD_DETECT);
+		wait_for_completion(&host->cmd_done);
+	}
+
 	status = sdcard_wait_done(host->sdcore + LITEX_MMC_SDCORE_CMDEVT_OFF);
+
 	if (status != SD_OK) {
 		pr_err("Command (cmd %d) failed, status %d\n", cmd, status);
 		return status;
@@ -246,6 +261,14 @@ static irqreturn_t litex_mmc_interrupt(int irq, void *arg)
 		litex_write32(host->sdirq + LITEX_MMC_SDIRQ_PENDING_OFF,
 			      SDIRQ_CARD_DETECT);
 		mmc_detect_change(mmc, msecs_to_jiffies(10));
+	}
+
+	/* Check for command completed */
+	if (pending & SDIRQ_CMD_DONE) {
+		/* Disable it so it doesn't keep interrupting */
+		litex_write32(host->sdirq + LITEX_MMC_SDIRQ_ENABLE_OFF,
+			      SDIRQ_CARD_DETECT);
+		complete(&host->cmd_done);
 	}
 
 	return IRQ_HANDLED;
@@ -539,6 +562,7 @@ static int litex_mmc_probe(struct platform_device *pdev)
 		goto err_exit;
 	}
 
+	init_completion(&host->cmd_done);
 	host->irq = platform_get_irq(pdev, 0);
 	if (host->irq < 0)
 		dev_err(&pdev->dev, "Failed to get IRQ, using polling\n");
