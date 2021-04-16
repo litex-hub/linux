@@ -49,9 +49,10 @@
 #define SDCARD_CTRL_DATA_TRANSFER_READ  1
 #define SDCARD_CTRL_DATA_TRANSFER_WRITE 2
 
-#define SDCARD_CTRL_RESPONSE_NONE  0
-#define SDCARD_CTRL_RESPONSE_SHORT 1
-#define SDCARD_CTRL_RESPONSE_LONG  2
+#define SDCARD_CTRL_RESPONSE_NONE	0
+#define SDCARD_CTRL_RESPONSE_SHORT	1
+#define SDCARD_CTRL_RESPONSE_LONG	2
+#define SDCARD_CTRL_RESPONSE_SHORT_BUSY	3
 
 #define SD_OK         0
 #define SD_WRITEERROR 1
@@ -232,7 +233,10 @@ static u32 litex_response_len(struct mmc_command *cmd)
 	if (cmd->flags & MMC_RSP_136) {
 		response_len = SDCARD_CTRL_RESPONSE_LONG;
 	} else if (cmd->flags & MMC_RSP_PRESENT) {
-		response_len = SDCARD_CTRL_RESPONSE_SHORT;
+		if (cmd->flags & MMC_RSP_BUSY)
+			response_len = SDCARD_CTRL_RESPONSE_SHORT_BUSY;
+		else
+			response_len = SDCARD_CTRL_RESPONSE_SHORT;
 	}
 
 	return response_len;
@@ -389,7 +393,7 @@ static void litex_request(struct mmc_host *mmc, struct mmc_request *mrq)
 
 	do {
 		status = send_cmd(host, cmd->opcode, cmd->arg,
-				response_len, transfer);
+				  response_len, transfer);
 	} while (status != SD_OK && retries-- > 0);
 
 	cmd->error = litex_map_status(status);
