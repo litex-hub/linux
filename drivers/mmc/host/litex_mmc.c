@@ -42,6 +42,7 @@
 #include <linux/delay.h>
 #include <linux/dma-mapping.h>
 #include <linux/sched/clock.h>
+#include <linux/interrupt.h>
 
 #include "litex_mmc.h"
 
@@ -60,6 +61,11 @@
 #define SD_CRCERROR   3
 #define SD_ERR_OTHER  4
 
+#define SDIRQ_CARD_DETECT	1
+#define SDIRQ_SD_TO_MEM_DONE	2
+#define SDIRQ_MEM_TO_SD_DONE	4
+#define SDIRQ_CMD_DONE		8
+
 struct litex_mmc_host {
 	struct mmc_host *mmc;
 	struct platform_device *dev;
@@ -68,6 +74,7 @@ struct litex_mmc_host {
 	void __iomem *sdcore;
 	void __iomem *sdreader;
 	void __iomem *sdwriter;
+	void __iomem *sdirq;
 
 	u32 resp[4];
 	u16 rca;
@@ -80,6 +87,8 @@ struct litex_mmc_host {
 	unsigned int clock;
 	bool is_bus_width_set;
 	bool app_cmd;
+
+	int irq;
 };
 
 
@@ -224,6 +233,22 @@ static int litex_get_cd(struct mmc_host *mmc)
 		host->is_bus_width_set = false;
 
 	return ret;
+}
+
+static irqreturn_t litex_mmc_interrupt(int irq, void *arg)
+{
+	struct mmc_host *mmc = arg;
+	struct litex_mmc_host *host = mmc_priv(mmc);
+	u32 pending = litex_read32(host->sdirq + LITEX_MMC_SDIRQ_PENDING_OFF);
+
+	/* Check for card change interrupt */
+	if (pending & SDIRQ_CARD_DETECT) {
+		litex_write32(host->sdirq + LITEX_MMC_SDIRQ_PENDING_OFF,
+			      SDIRQ_CARD_DETECT);
+		mmc_detect_change(mmc, msecs_to_jiffies(10));
+	}
+
+	return IRQ_HANDLED;
 }
 
 static u32 litex_response_len(struct mmc_command *cmd)
@@ -514,6 +539,10 @@ static int litex_mmc_probe(struct platform_device *pdev)
 		goto err_exit;
 	}
 
+	host->irq = platform_get_irq(pdev, 0);
+	if (host->irq < 0)
+		dev_err(&pdev->dev, "Failed to get IRQ, using polling\n");
+
 	/* LiteSDCard only supports 4-bit bus width; therefore, we MUST inject
 	 * a SET_BUS_WIDTH (acmd6) before the very first data transfer, earlier
 	 * than when the mmc subsystem would normally get around to it!
@@ -541,6 +570,9 @@ static int litex_mmc_probe(struct platform_device *pdev)
 	MAP_RESOURCE(sdreader, 2);
 	MAP_RESOURCE(sdwriter, 3);
 
+	if (host->irq > 0)
+		MAP_RESOURCE(sdirq, 4);
+
 	mmc->ocr_avail = MMC_VDD_32_33 | MMC_VDD_33_34;
 	mmc->ops = &litex_mmc_ops;
 
@@ -556,8 +588,6 @@ static int litex_mmc_probe(struct platform_device *pdev)
 	/* add set-by-default capabilities */
 	mmc->caps |= MMC_CAP_WAIT_WHILE_BUSY | MMC_CAP_DRIVER_TYPE_D |
 		MMC_CAP_CMD23;
-	/* FIXME: set "broken-cd" in dt, or somehow handle through irq? */
-	mmc->caps |= MMC_CAP_NEEDS_POLL;
 	/* default to "disable-wp", "full-pwr-cycle", "no-sdio" */
 	mmc->caps2 |= MMC_CAP2_NO_WRITE_PROTECT |
 		      MMC_CAP2_FULL_PWR_CYCLE |
@@ -575,6 +605,27 @@ static int litex_mmc_probe(struct platform_device *pdev)
 	litex_write8(host->sdreader + LITEX_MMC_SDBLK2MEM_ENA_OFF, 0);
 	litex_write8(host->sdwriter + LITEX_MMC_SDMEM2BLK_ENA_OFF, 0);
 
+	/* set up interrupt handler */
+	if (host->irq > 0) {
+		ret = request_irq(host->irq, litex_mmc_interrupt, 0,
+				  "litex-mmc", mmc);
+		if (ret < 0) {
+			dev_err(&pdev->dev, "error %d requesting irq, using polling\n",
+				ret);
+			host->irq = 0;
+		}
+	}
+
+	/* enable card-change interrupts, or else ask for polling */
+	if (host->irq > 0) {
+		litex_write32(host->sdirq + LITEX_MMC_SDIRQ_PENDING_OFF,
+			      SDIRQ_CARD_DETECT);	/* clears it */
+		litex_write32(host->sdirq + LITEX_MMC_SDIRQ_ENABLE_OFF,
+			      SDIRQ_CARD_DETECT);
+	} else {
+		mmc->caps |= MMC_CAP_NEEDS_POLL;
+	}
+
 	return 0;
 
 err_exit:
@@ -587,6 +638,8 @@ static int litex_mmc_remove(struct platform_device *pdev)
 {
 	struct litex_mmc_host *host = dev_get_drvdata(&pdev->dev);
 
+	if (host->irq > 0)
+		free_irq(host->irq, host->mmc);
 	mmc_remove_host(host->mmc);
 	mmc_free_host(host->mmc);
 
