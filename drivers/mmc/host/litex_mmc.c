@@ -97,8 +97,7 @@ void sdclk_set_clk(struct litex_mmc_host *host, unsigned int clk_freq) {
 	u32 div = clk_freq ? host->freq / clk_freq : 256;
 	div = roundup_pow_of_two(div);
 	div = min(max(div, (u32)2), (u32)256);
-	dev_info(&host->dev->dev,
-		"Requested clk_freq=%d: set to %d via div=%d\n",
+	pr_debug("litex_mmc requested clk_freq=%d: set to %d via div=%d\n",
 		clk_freq, host->freq / div, div);
 	litex_write16(host->sdphy + LITEX_MMC_SDPHY_CLOCKERDIV_OFF, div);
 }
