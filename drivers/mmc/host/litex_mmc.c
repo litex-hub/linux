@@ -286,6 +286,13 @@ static void litex_request(struct mmc_host *mmc, struct mmc_request *mrq)
 	u32 response_len = litex_response_len(cmd);
 	u32 transfer = SDCARD_CTRL_DATA_TRANSFER_NONE;
 
+	/* First check that the card is still there */
+	if (!litex_get_cd(mmc)) {
+		cmd->error = -ENOMEDIUM;
+		mmc_request_done(mmc, mrq);
+		return;
+	}
+
 	/*
 	 * Send set-block-count command if needed.
 	 */
