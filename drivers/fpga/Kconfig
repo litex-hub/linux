@@ -91,6 +91,12 @@ config FPGA_MGR_TS73XX
 	  FPGA manager driver support for the Altera Cyclone II FPGA
 	  present on the TS-73xx SBC boards.
 
+config FPGA_MGR_LITEX
+	tristate "LiteX ICAPBitstream FPGA Manager"
+	depends on OF && HAS_IOMEM && LITEX_SOC_CONTROLLER
+	help
+	  FPGA Manager for LiteX SoC builder that uses ICAPBitstream.
+
 config FPGA_BRIDGE
 	tristate "FPGA Bridge Framework"
 	help
