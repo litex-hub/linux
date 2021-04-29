@@ -365,6 +365,7 @@ config GPIO_LITEX
 	tristate "LiteX GPIO support"
 	depends on OF && HAS_IOMEM && LITEX_SOC_CONTROLLER
 	select GPIOLIB_IRQCHIP
+	select IRQ_DOMAIN_HIERARCHY
 	help
 	  driver for GPIO functionality on LiteX
 
