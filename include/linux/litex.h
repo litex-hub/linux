@@ -80,4 +80,75 @@ static inline u64 litex_read64(void __iomem *reg)
 		_read_litex_subregister(reg + 4);
 }
 
+/* FIXME: some LiteX drivers still write to a programmatically computed CSR
+ * size, which should really be rewritten to use fixed-size accessors (see
+ * above). The list currently includes:
+ *   - drivers/gpio/gpio-litex.c
+ *   - drivers/clk/clk-litex.c
+ * For now, we provide arbitrary-size CSR accessors below, for compatibility:
+ */
+
+#define LITEX_SUBREG_SIZE       0x4
+#define LITEX_SUBREG_SIZE_BIT   (LITEX_SUBREG_SIZE * 8)
+#define LITEX_SUBREG_ALIGN      0x4
+
+/* number of LiteX subregisters needed to store a register of given reg_size */
+#define _litex_num_subregs(reg_size) \
+	(((reg_size) - 1) / LITEX_SUBREG_SIZE + 1)
+
+/*
+ * The purpose of `_litex_[set|get]_reg()` is to implement the logic of
+ * writing to/reading from the LiteX CSR in a single place that can be then
+ * reused by all LiteX drivers via the `litex_[write|read][8|16|32|64]()`
+ * accessors for the appropriate data width.
+ * NOTE: direct use of `_litex_[set|get]_reg()` by LiteX drivers is strongly
+ * discouraged, as they perform no error checking on the requested data width!
+ */
+
+/**
+ * _litex_set_reg() - Writes a value to the LiteX CSR (Control&Status Register)
+ * @reg: Address of the CSR
+ * @reg_size: The width of the CSR expressed in the number of bytes
+ * @val: Value to be written to the CSR
+ *
+ * This function splits a single (possibly multi-byte) LiteX CSR write into
+ * a series of subregister writes with a proper offset.
+ * NOTE: caller is responsible for ensuring (0 < reg_size <= sizeof(u64)).
+ */
+static inline void _litex_set_reg(void __iomem *reg, size_t reg_size, u64 val)
+{
+	u8 shift = _litex_num_subregs(reg_size) * LITEX_SUBREG_SIZE_BIT;
+
+	while (shift > 0) {
+		shift -= LITEX_SUBREG_SIZE_BIT;
+		_write_litex_subregister(val >> shift, reg);
+		reg += LITEX_SUBREG_ALIGN;
+	}
+}
+
+/**
+ * _litex_get_reg() - Reads a value of the LiteX CSR (Control&Status Register)
+ * @reg: Address of the CSR
+ * @reg_size: The width of the CSR expressed in the number of bytes
+ *
+ * Return: Value read from the CSR
+ *
+ * This function generates a series of subregister reads with a proper offset
+ * and joins their results into a single (possibly multi-byte) LiteX CSR value.
+ * NOTE: caller is responsible for ensuring (0 < reg_size <= sizeof(u64)).
+ */
+static inline u64 _litex_get_reg(void __iomem *reg, size_t reg_size)
+{
+	u64 r;
+	u8 i;
+
+	r = _read_litex_subregister(reg);
+	for (i = 1; i < _litex_num_subregs(reg_size); i++) {
+		r <<= LITEX_SUBREG_SIZE_BIT;
+		reg += LITEX_SUBREG_ALIGN;
+		r |= _read_litex_subregister(reg);
+	}
+	return r;
+}
+
 #endif /* _LINUX_LITEX_H */
