@@ -8,6 +8,7 @@
 
 #include <linux/etherdevice.h>
 #include <linux/interrupt.h>
+#include <linux/iopoll.h>
 #include <linux/litex.h>
 #include <linux/module.h>
 #include <linux/of_net.h>
@@ -42,6 +43,10 @@ struct liteeth {
 	struct net_device *netdev;
 	struct device *dev;
 	u32 slot_size;
+
+	/* Polling support */
+	int use_polling;
+	struct timer_list poll_timer;
 
 	/* Tx */
 	u32 tx_slot;
@@ -111,6 +116,14 @@ static irqreturn_t liteeth_interrupt(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
+static void liteeth_timeout(struct timer_list *t)
+{
+	struct liteeth *priv = from_timer(priv, t, poll_timer);
+
+	liteeth_interrupt(0, priv->netdev);
+	mod_timer(&priv->poll_timer, jiffies + msecs_to_jiffies(10));
+}
+
 static int liteeth_open(struct net_device *netdev)
 {
 	struct liteeth *priv = netdev_priv(netdev);
@@ -120,10 +133,16 @@ static int liteeth_open(struct net_device *netdev)
 	litex_write8(priv->base + LITEETH_WRITER_EV_PENDING, 1);
 	litex_write8(priv->base + LITEETH_READER_EV_PENDING, 1);
 
-	err = request_irq(netdev->irq, liteeth_interrupt, 0, netdev->name, netdev);
-	if (err) {
-		netdev_err(netdev, "failed to request irq %d\n", netdev->irq);
-		return err;
+	if (priv->use_polling) {
+		timer_setup(&priv->poll_timer, liteeth_timeout, 0);
+		mod_timer(&priv->poll_timer, jiffies + msecs_to_jiffies(50));
+	} else {
+		err = request_irq(netdev->irq, liteeth_interrupt, 0, netdev->name, netdev);
+		if (err) {
+			netdev_err(netdev, "failed to request irq %d\n", netdev->irq);
+			return err;
+		}
+
 	}
 
 	/* Enable IRQs */
@@ -146,7 +165,11 @@ static int liteeth_stop(struct net_device *netdev)
 	litex_write8(priv->base + LITEETH_WRITER_EV_ENABLE, 0);
 	litex_write8(priv->base + LITEETH_READER_EV_ENABLE, 0);
 
-	free_irq(netdev->irq, netdev);
+	if (priv->use_polling) {
+		del_timer_sync(&priv->poll_timer);
+	} else {
+		free_irq(netdev->irq, netdev);
+	}
 
 	return 0;
 }
@@ -253,9 +276,13 @@ static int liteeth_probe(struct platform_device *pdev)
 	if (!netdev->tstats)
 		return -ENOMEM;
 
+	priv->use_polling = 0;
 	irq = platform_get_irq(pdev, 0);
-	if (irq < 0)
-		return irq;
+	if (irq < 0) {
+		dev_err(&pdev->dev, "Failed to get IRQ, using polling\n");
+		priv->use_polling = 1;
+		irq = 0;
+	}
 	netdev->irq = irq;
 
 	priv->base = devm_platform_ioremap_resource_byname(pdev, "mac");
