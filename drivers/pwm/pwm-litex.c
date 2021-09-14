@@ -154,7 +154,8 @@ static int litex_pwm_remove(struct platform_device *pdev)
 {
 	struct litex_pwm_chip *litex = platform_get_drvdata(pdev);
 
-	return pwmchip_remove(&litex->chip);
+	pwmchip_remove(&litex->chip);
+	return 0;
 }
 
 static const struct of_device_id litex_of_match[] = {
