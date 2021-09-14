@@ -545,8 +545,11 @@ config LOONGSON_HTPIC
 	select GENERIC_IRQ_CHIP
 	help
 	  Support for the Loongson-3 HyperTransport PIC Controller.
+
 config LITEX_VEXRISCV_INTC
 	bool "LiteX VexRiscv interrupt controller support"
+	depends on RISCV
+	depends on LITEX || COMPILE_TEST
 	select IRQ_DOMAIN
 	help
 	  Support for the VexRiscv's interrupt controller. VexRiscv does not follow
