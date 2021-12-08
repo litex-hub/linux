@@ -23,6 +23,7 @@
 #include <linux/mmc/host.h>
 #include <linux/mmc/mmc.h>
 #include <linux/mmc/sd.h>
+#include <linux/mmc/slot-gpio.h>
 
 #define LITEX_PHY_CARDDETECT  0x00
 #define LITEX_PHY_CLOCKERDIV  0x04
@@ -240,7 +241,15 @@ static int litex_mmc_get_cd(struct mmc_host *mmc)
 	if (!mmc_card_is_removable(mmc))
 		return 1;
 
-	ret = !litex_read8(host->sdphy + LITEX_PHY_CARDDETECT);
+	ret = mmc_gpio_get_cd(mmc);
+	if (ret >= 0) {
+		/* GPIO based card-detect explicitly specified in DTS */
+		ret = !!ret;
+	} else {
+		/* Use gateware card-detect bit by default */
+		ret = !litex_read8(host->sdphy + LITEX_PHY_CARDDETECT);
+	}
+
 	if (ret)
 		return ret;
 
