@@ -165,14 +165,14 @@ static int litex_fpga_probe(struct platform_device *pdev)
 	if (IS_ERR_OR_NULL(fpga_s->membase))
 		return -EIO;
 
-	mgr = devm_fpga_mgr_create(&pdev->dev,
-				   "LiteX ICAPBitstream FPGA Manager",
-				   &litex_fpga_manager_ops, fpga_s);
-	if (!mgr)
-		return -ENOMEM;
+	mgr = devm_fpga_mgr_register(&pdev->dev,
+				     "LiteX ICAPBitstream FPGA Manager",
+				     &litex_fpga_manager_ops, fpga_s);
+	if (IS_ERR(mgr))
+		return PTR_ERR(mgr);
 
 	platform_set_drvdata(pdev, mgr);
-	return fpga_mgr_register(mgr);
+	return 0;
 }
 
 static const struct of_device_id litex_of_match[] = {
