@@ -41,7 +41,6 @@ struct litex_gpio {
 	int port_direction;
 	int reg_span;
 	struct gpio_chip chip;
-	struct irq_chip ichip;
 	spinlock_t gpio_lock;
 	unsigned int irq_number;
 };
@@ -153,6 +152,8 @@ static void litex_gpio_irq_unmask(struct irq_data *idata)
 	u32 bit = BIT(offset);
 	u32 enable;
 
+	gpiochip_enable_irq(chip, idata->hwirq);
+
 	spin_lock_irqsave(&gpio_s->gpio_lock, flags);
 
 	/* Clear any sticky pending interrupts */
@@ -180,6 +181,8 @@ static void litex_gpio_irq_mask(struct irq_data *idata)
 	litex_gpio_set_reg(gpio_s, LITEX_GPIO_ENABLE_OFFSET, enable);
 
 	spin_unlock_irqrestore(&gpio_s->gpio_lock, flags);
+
+	gpiochip_disable_irq(chip, idata->hwirq);
 }
 
 static int litex_gpio_irq_set_type(struct irq_data *idata, unsigned int type)
@@ -253,6 +256,17 @@ static int litex_gpio_irq_set_affinity(struct irq_data *idata,
 	return -EINVAL;
 }
 
+static const struct irq_chip litex_irq_chip = {
+	.name			= "litex-gpio",
+	.irq_unmask		= litex_gpio_irq_unmask,
+	.irq_mask		= litex_gpio_irq_mask,
+	.irq_set_type		= litex_gpio_irq_set_type,
+	.irq_eoi		= litex_gpio_irq_eoi,
+	.irq_set_affinity	= litex_gpio_irq_set_affinity,
+	.flags			= IRQCHIP_IMMUTABLE,
+	GPIOCHIP_IRQ_RESOURCE_HELPERS,
+};
+
 static int litex_gpio_child_to_parent_hwirq(struct gpio_chip *chip,
 					     unsigned int child,
 					     unsigned int child_type,
@@ -318,15 +332,8 @@ static int litex_gpio_init_irq(struct platform_device *pdev,
 	/* Disable all GPIO interrupts before enabling parent interrupts */
 	litex_gpio_set_reg(gpio_s, LITEX_GPIO_ENABLE_OFFSET, 0);
 
-	gpio_s->ichip.name = pdev->name;
-	gpio_s->ichip.irq_unmask = litex_gpio_irq_unmask;
-	gpio_s->ichip.irq_mask = litex_gpio_irq_mask;
-	gpio_s->ichip.irq_set_type = litex_gpio_irq_set_type;
-	gpio_s->ichip.irq_eoi = litex_gpio_irq_eoi;
-	gpio_s->ichip.irq_set_affinity = litex_gpio_irq_set_affinity;
-
 	gichip = &gpio_s->chip.irq;
-	gichip->chip = &gpio_s->ichip;
+	gpio_irq_chip_set_chip(gichip, &litex_irq_chip);
 	gichip->fwnode = of_node_to_fwnode(node);
 	gichip->parent_domain = parent_domain;
 	gichip->child_to_parent_hwirq = litex_gpio_child_to_parent_hwirq;
