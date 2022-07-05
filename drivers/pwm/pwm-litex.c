@@ -20,14 +20,15 @@
 #include <linux/err.h>
 #include <linux/io.h>
 #include <linux/kernel.h>
+#include <linux/litex.h>
+#include <linux/math64.h>
 #include <linux/module.h>
-#include <linux/of.h>
 #include <linux/of_address.h>
+#include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/pwm.h>
 #include <linux/slab.h>
 #include <linux/stmp_device.h>
-#include <linux/litex.h>
 
 #define REG_EN_ENABLE           0x1
 #define REG_EN_DISABLE          0x0
@@ -47,49 +48,37 @@ struct litex_pwm_chip {
 
 #define to_litex_pwm_chip(_chip) container_of(_chip, struct litex_pwm_chip, chip)
 
-static int litex_pwm_config(struct pwm_chip *chip, struct pwm_device *pwm,
-			  int duty_ns, int period_ns)
+static int litex_pwm_apply(struct pwm_chip *chip, struct pwm_device *pwm,
+			   const struct pwm_state *state)
 {
 	struct litex_pwm_chip *litex = to_litex_pwm_chip(chip);
-	unsigned long period_cycles, duty_cycles;
-	unsigned long long c;
+	u32 period_cycles, duty_cycles;
 
-	/* Calculate period cycles */
-	c = (unsigned long long)litex->clock * (unsigned long long)period_ns;
-	do_div(c, NSEC_PER_SEC);
-	period_cycles = c;
+	if (!state->enabled) {
+		if (pwm->state.enabled)
+			litex_write8(litex->enable, REG_EN_DISABLE);
 
-	/* Calculate duty cycles */
-	c *= duty_ns;
-	do_div(c, period_ns);
-	duty_cycles = c;
+		return 0;
+	}
 
-    /* Apply values to registers */
+	/* Calculate period and duty cycles */
+	period_cycles = mul_u64_u32_div(state->period, litex->clock,
+					NSEC_PER_SEC);
+	duty_cycles = mul_u64_u32_div(state->duty_cycle, litex->clock,
+				      NSEC_PER_SEC);
+
+	/* Apply values to registers */
 	litex_write32(litex->width, duty_cycles);
 	litex_write32(litex->period, period_cycles);
 
+	if (!pwm->state.enabled)
+		litex_write8(litex->enable, REG_EN_ENABLE);
+
 	return 0;
-}
-
-static int litex_pwm_enable(struct pwm_chip *chip, struct pwm_device *pwm)
-{
-	struct litex_pwm_chip *litex = to_litex_pwm_chip(chip);
-
-	litex_write8(litex->enable, REG_EN_ENABLE);
-	return 0;
-}
-
-static void litex_pwm_disable(struct pwm_chip *chip, struct pwm_device *pwm)
-{
-	struct litex_pwm_chip *litex = to_litex_pwm_chip(chip);
-
-	litex_write8(litex->enable, REG_EN_DISABLE);
 }
 
 static const struct pwm_ops litex_pwm_ops = {
-	.config = litex_pwm_config,
-	.enable = litex_pwm_enable,
-	.disable = litex_pwm_disable,
+	.apply = litex_pwm_apply,
 	.owner = THIS_MODULE,
 };
 
