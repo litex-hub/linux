@@ -88,6 +88,12 @@ config N64CART
 	help
 	  Support for the N64 cart.
 
+config LITESATA
+	tristate "LiteX LiteSATA block device support"
+	depends on LITEX
+	help
+	  Support for the LiteX LiteSATA block device.
+
 config CDROM
 	tristate
 
