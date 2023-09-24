@@ -167,10 +167,14 @@ static int litex_mmc_send_cmd(struct litex_mmc_host *host,
 	if (transfer == SD_CTL_DATA_XFER_NONE)
 		return ret; /* OK from prior litex_mmc_sdcard_wait_done() */
 
+	/*
+	 * NOTE: this information becomes available at the same time
+	 * as LITEX_CORE_CMDEVT, and is therefore also covered by the
+	 * SDIRQ_CMD_DONE interrupt and cmd_done completion
+	 */
 	ret = litex_mmc_sdcard_wait_done(host->sdcore + LITEX_CORE_DATEVT, dev);
 	if (ret) {
 		dev_err(dev, "Data xfer (cmd %d) error, status %d\n", cmd, ret);
-		return ret;
 	}
 
 	return ret;
