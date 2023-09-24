@@ -68,10 +68,10 @@
 #define SD_SLEEP_US       5
 #define SD_TIMEOUT_US 20000
 
-#define SDIRQ_CARD_DETECT    1
-#define SDIRQ_SD_TO_MEM_DONE 2
-#define SDIRQ_MEM_TO_SD_DONE 4
-#define SDIRQ_CMD_DONE       8
+#define SDIRQ_CARD_DETECT    BIT(0)
+#define SDIRQ_SD_TO_MEM_DONE BIT(1)
+#define SDIRQ_MEM_TO_SD_DONE BIT(2)
+#define SDIRQ_CMD_DONE       BIT(3)
 
 struct litex_mmc_host {
 	struct mmc_host *mmc;
