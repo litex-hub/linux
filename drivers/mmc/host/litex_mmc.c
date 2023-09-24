@@ -131,8 +131,6 @@ static int litex_mmc_send_cmd(struct litex_mmc_host *host,
 
 	if (use_irq) {
 		reinit_completion(&host->cmd_done);
-		litex_write32(host->sdirq + LITEX_IRQ_ENABLE,
-			      SDIRQ_CMD_DONE | SDIRQ_CARD_DETECT);
 	}
 
 	/* Send command */
@@ -261,9 +259,8 @@ static irqreturn_t litex_mmc_interrupt(int irq, void *arg)
 
 	/* Check for command completed */
 	if (pending & SDIRQ_CMD_DONE) {
-		/* Disable it so it doesn't keep interrupting */
-		litex_write32(host->sdirq + LITEX_IRQ_ENABLE,
-			      SDIRQ_CARD_DETECT);
+		litex_write32(host->sdirq + LITEX_IRQ_PENDING,
+			      SDIRQ_CMD_DONE);
 		complete(&host->cmd_done);
 		ret = IRQ_HANDLED;
 	}
@@ -502,9 +499,11 @@ static int litex_mmc_irq_init(struct platform_device *pdev,
 		goto use_polling;
 	}
 
-	/* Clear & enable card-change interrupts */
-	litex_write32(host->sdirq + LITEX_IRQ_PENDING, SDIRQ_CARD_DETECT);
-	litex_write32(host->sdirq + LITEX_IRQ_ENABLE, SDIRQ_CARD_DETECT);
+	/* Clear & enable interrupts */
+	litex_write32(host->sdirq + LITEX_IRQ_PENDING,
+			SDIRQ_CARD_DETECT | SDIRQ_CMD_DONE);
+	litex_write32(host->sdirq + LITEX_IRQ_ENABLE,
+			SDIRQ_CARD_DETECT | SDIRQ_CMD_DONE);
 
 	init_completion(&host->cmd_done);
 
