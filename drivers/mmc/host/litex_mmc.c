@@ -244,25 +244,24 @@ static irqreturn_t litex_mmc_interrupt(int irq, void *arg)
 	struct mmc_host *mmc = arg;
 	struct litex_mmc_host *host = mmc_priv(mmc);
 	u32 pending = litex_read32(host->sdirq + LITEX_IRQ_PENDING);
-	irqreturn_t ret = IRQ_NONE;
+	u32 handled = 0;
 
 	/* Check for card change interrupt */
 	if (pending & SDIRQ_CARD_DETECT) {
-		litex_write32(host->sdirq + LITEX_IRQ_PENDING,
-			      SDIRQ_CARD_DETECT);
+		handled |= SDIRQ_CARD_DETECT;
 		mmc_detect_change(mmc, msecs_to_jiffies(10));
-		ret = IRQ_HANDLED;
 	}
 
 	/* Check for command completed */
 	if (pending & SDIRQ_CMD_DONE) {
-		litex_write32(host->sdirq + LITEX_IRQ_PENDING,
-			      SDIRQ_CMD_DONE);
+		handled |= SDIRQ_CMD_DONE;
 		complete(&host->cmd_done);
-		ret = IRQ_HANDLED;
 	}
 
-	return ret;
+	/* Acknowledge handled interrupts */
+	litex_write32(host->sdirq + LITEX_IRQ_PENDING, handled);
+
+	return handled ? IRQ_HANDLED : IRQ_NONE;
 }
 
 static u32 litex_mmc_response_len(struct mmc_command *cmd)
