@@ -469,6 +469,11 @@ static const struct mmc_host_ops litex_mmc_ops = {
 	.set_ios = litex_mmc_set_ios,
 };
 
+static void litex_mmc_irq_off(void *sdirq)
+{
+	litex_write32((void __iomem *)sdirq + LITEX_IRQ_ENABLE, 0);
+}
+
 static int litex_mmc_irq_init(struct platform_device *pdev,
 			      struct litex_mmc_host *host)
 {
@@ -495,6 +500,11 @@ static int litex_mmc_irq_init(struct platform_device *pdev,
 		dev_warn(dev, "IRQ request error %d, using polling\n", ret);
 		goto use_polling;
 	}
+
+	ret = devm_add_action_or_reset(dev, litex_mmc_irq_off, host->sdirq);
+	if (ret)
+		return dev_err_probe(dev, ret,
+					"Can't register irq_off action\n");
 
 	/* Clear & enable interrupts */
 	litex_write32(host->sdirq + LITEX_IRQ_PENDING,
