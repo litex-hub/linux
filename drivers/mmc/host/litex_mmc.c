@@ -87,6 +87,7 @@ struct litex_mmc_host {
 	dma_addr_t dma;
 
 	struct completion cmd_done;
+	struct completion data_done;
 	int irq;
 
 	unsigned int ref_clk;
@@ -258,6 +259,18 @@ static irqreturn_t litex_mmc_interrupt(int irq, void *arg)
 		complete(&host->cmd_done);
 	}
 
+	/* Check for DMA read completed */
+	if (pending & SDIRQ_SD_TO_MEM_DONE) {
+		handled |= SDIRQ_SD_TO_MEM_DONE;
+		complete(&host->data_done);
+	}
+
+	/* Check for DMA write completed */
+	if (pending & SDIRQ_MEM_TO_SD_DONE) {
+		handled |= SDIRQ_MEM_TO_SD_DONE;
+		complete(&host->data_done);
+	}
+
 	/* Acknowledge handled interrupts */
 	litex_write32(host->sdirq + LITEX_IRQ_PENDING, handled);
 
@@ -369,6 +382,10 @@ static void litex_mmc_request(struct mmc_host *mmc, struct mmc_request *mrq)
 			return;
 		}
 
+		if (host->irq > 0) {
+			reinit_completion(&host->data_done);
+		}
+
 		litex_mmc_do_dma(host, data, &len, &direct, &transfer);
 	}
 
@@ -384,6 +401,9 @@ static void litex_mmc_request(struct mmc_host *mmc, struct mmc_request *mrq)
 		u8 evt;
 
 		/* Wait for completion of (read or write) DMA transfer */
+		if (host->irq > 0) {
+			wait_for_completion(&host->data_done);
+		}
 		cmd->error = readx_poll_timeout(litex_read8, reg,
 						evt, evt & SD_BIT_DONE,
 						SD_SLEEP_US, SD_TIMEOUT_US);
@@ -507,11 +527,14 @@ static int litex_mmc_irq_init(struct platform_device *pdev,
 
 	/* Clear & enable interrupts */
 	litex_write32(host->sdirq + LITEX_IRQ_PENDING,
-			SDIRQ_CARD_DETECT | SDIRQ_CMD_DONE);
+			SDIRQ_CARD_DETECT | SDIRQ_CMD_DONE |
+			SDIRQ_SD_TO_MEM_DONE | SDIRQ_MEM_TO_SD_DONE);
 	litex_write32(host->sdirq + LITEX_IRQ_ENABLE,
-			SDIRQ_CARD_DETECT | SDIRQ_CMD_DONE);
+			SDIRQ_CARD_DETECT | SDIRQ_CMD_DONE |
+			SDIRQ_SD_TO_MEM_DONE | SDIRQ_MEM_TO_SD_DONE);
 
 	init_completion(&host->cmd_done);
+	init_completion(&host->data_done);
 
 	return 0;
 
