@@ -498,6 +498,8 @@ static int litex_mmc_irq_init(struct platform_device *pdev,
 	litex_write32(host->sdirq + LITEX_IRQ_PENDING, SDIRQ_CARD_DETECT);
 	litex_write32(host->sdirq + LITEX_IRQ_ENABLE, SDIRQ_CARD_DETECT);
 
+	init_completion(&host->cmd_done);
+
 	return 0;
 
 use_polling:
@@ -583,7 +585,6 @@ static int litex_mmc_probe(struct platform_device *pdev)
 	litex_write8(host->sdreader + LITEX_BLK2MEM_ENA, 0);
 	litex_write8(host->sdwriter + LITEX_MEM2BLK_ENA, 0);
 
-	init_completion(&host->cmd_done);
 	ret = litex_mmc_irq_init(pdev, host);
 	if (ret)
 		return ret;
