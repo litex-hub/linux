@@ -124,12 +124,9 @@ static int litex_mmc_send_cmd(struct litex_mmc_host *host,
 			      u8 cmd, u32 arg, u8 response_len, u8 transfer)
 {
 	struct device *dev = mmc_dev(host->mmc);
-	bool use_irq = host->irq > 0 &&
-			(transfer != SD_CTL_DATA_XFER_NONE ||
-			 response_len == SD_CTL_RESP_SHORT_BUSY);
 	int ret;
 
-	if (use_irq) {
+	if (host->irq > 0) {
 		reinit_completion(&host->cmd_done);
 	}
 
@@ -139,7 +136,7 @@ static int litex_mmc_send_cmd(struct litex_mmc_host *host,
 		      cmd << 8 | transfer << 5 | response_len);
 	litex_write8(host->sdcore + LITEX_CORE_CMDSND, 1);
 
-	if (use_irq) {
+	if (host->irq > 0) {
 		wait_for_completion(&host->cmd_done);
 	}
 
