@@ -368,7 +368,7 @@ static int litex_spi_flash_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int litex_spi_flash_remove(struct platform_device *pdev)
+static void litex_spi_flash_remove(struct platform_device *pdev)
 {
 	struct spi *spi = platform_get_drvdata(pdev);
 	struct resource *res;
@@ -377,8 +377,6 @@ static int litex_spi_flash_remove(struct platform_device *pdev)
 	spi->base = devm_ioremap_resource(&pdev->dev, res);
 	litex_write8(spi->base + SPIFLASH_BITBANG_EN_OFFSET, SPIFLASH_DISABLE);
 	mtd_device_unregister(&spi->nor.mtd);
-
-	return 0;
 }
 
 static const struct of_device_id litex_of_match[] = {
@@ -390,7 +388,7 @@ MODULE_DEVICE_TABLE(of, litex_of_match);
 
 static struct platform_driver litex_spi_flash_driver = {
 	.probe	= litex_spi_flash_probe,
-	.remove	= litex_spi_flash_remove,
+	.remove_new = litex_spi_flash_remove,
 	.driver	= {
 		.name = "litex-spiflash",
 		.of_match_table   = of_match_ptr(litex_of_match)
