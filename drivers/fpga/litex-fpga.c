@@ -133,14 +133,12 @@ static const struct fpga_manager_ops litex_fpga_manager_ops = {
 
 /* Driver functions */
 
-static int litex_fpga_remove(struct platform_device *pdev)
+static void litex_fpga_remove(struct platform_device *pdev)
 {
 	struct fpga_manager *mgr;
 
 	mgr = platform_get_drvdata(pdev);
 	fpga_mgr_unregister(mgr);
-
-	return 0;
 }
 
 static int litex_fpga_probe(struct platform_device *pdev)
@@ -188,7 +186,7 @@ static struct platform_driver litex_fpga_driver = {
 		.of_match_table = of_match_ptr(litex_of_match)
 	},
 	.probe		= litex_fpga_probe,
-	.remove	= litex_fpga_remove
+	.remove_new	= litex_fpga_remove
 };
 
 module_platform_driver(litex_fpga_driver);
