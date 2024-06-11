@@ -1765,10 +1765,9 @@ static int litex_clk_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int litex_clk_remove(struct platform_device *pdev)
+static void litex_clk_remove(struct platform_device *pdev)
 {
 	of_clk_del_provider(pdev->dev.of_node);
-	return 0;
 }
 
 static struct platform_driver litex_clk_driver = {
@@ -1777,7 +1776,7 @@ static struct platform_driver litex_clk_driver = {
 		.of_match_table = of_match_ptr(litex_of_match),
 	},
 	.probe = litex_clk_probe,
-	.remove = litex_clk_remove,
+	.remove_new = litex_clk_remove,
 };
 
 module_platform_driver(litex_clk_driver);
