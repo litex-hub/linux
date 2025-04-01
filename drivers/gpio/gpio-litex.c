@@ -148,21 +148,18 @@ static void litex_gpio_irq_unmask(struct irq_data *idata)
 	struct gpio_chip *chip = irq_data_get_irq_chip_data(idata);
 	struct litex_gpio *gpio_s = gpiochip_get_data(chip);
 	int offset = irqd_to_hwirq(idata) % GPIO_PINS_MAX;
-	unsigned long flags;
 	u32 bit = BIT(offset);
 	u32 enable;
 
 	gpiochip_enable_irq(chip, idata->hwirq);
 
-	spin_lock_irqsave(&gpio_s->gpio_lock, flags);
-
 	/* Clear any sticky pending interrupts */
-	litex_gpio_set_reg(gpio_s, LITEX_GPIO_PENDING_OFFSET, bit);
-	enable = litex_gpio_get_reg(gpio_s, LITEX_GPIO_ENABLE_OFFSET);
-	enable |= bit;
-	litex_gpio_set_reg(gpio_s, LITEX_GPIO_ENABLE_OFFSET, enable);
-
-	spin_unlock_irqrestore(&gpio_s->gpio_lock, flags);
+	scoped_guard(spinlock_irqsave, &gpio_s->gpio_lock) {
+		litex_gpio_set_reg(gpio_s, LITEX_GPIO_PENDING_OFFSET, bit);
+		enable = litex_gpio_get_reg(gpio_s, LITEX_GPIO_ENABLE_OFFSET);
+		enable |= bit;
+		litex_gpio_set_reg(gpio_s, LITEX_GPIO_ENABLE_OFFSET, enable);
+	}
 }
 
 static void litex_gpio_irq_mask(struct irq_data *idata)
@@ -170,17 +167,14 @@ static void litex_gpio_irq_mask(struct irq_data *idata)
 	struct gpio_chip *chip = irq_data_get_irq_chip_data(idata);
 	struct litex_gpio *gpio_s = gpiochip_get_data(chip);
 	int offset = irqd_to_hwirq(idata) % GPIO_PINS_MAX;
-	unsigned long flags;
 	u32 bit = BIT(offset);
 	u32 enable;
 
-	spin_lock_irqsave(&gpio_s->gpio_lock, flags);
-
-	enable = litex_gpio_get_reg(gpio_s, LITEX_GPIO_ENABLE_OFFSET);
-	enable &= ~bit;
-	litex_gpio_set_reg(gpio_s, LITEX_GPIO_ENABLE_OFFSET, enable);
-
-	spin_unlock_irqrestore(&gpio_s->gpio_lock, flags);
+	scoped_guard(spinlock_irqsave, &gpio_s->gpio_lock) {
+		enable = litex_gpio_get_reg(gpio_s, LITEX_GPIO_ENABLE_OFFSET);
+		enable &= ~bit;
+		litex_gpio_set_reg(gpio_s, LITEX_GPIO_ENABLE_OFFSET, enable);
+	}
 
 	gpiochip_disable_irq(chip, idata->hwirq);
 }
@@ -190,36 +184,38 @@ static int litex_gpio_irq_set_type(struct irq_data *idata, unsigned int type)
 	struct gpio_chip *chip = irq_data_get_irq_chip_data(idata);
 	struct litex_gpio *gpio_s = gpiochip_get_data(chip);
 	int offset = irqd_to_hwirq(idata) % GPIO_PINS_MAX;
-	unsigned long flags;
 	u32 bit = BIT(offset);
 	u32 mode, edge;
 	int ret = 0;
 
-	spin_lock_irqsave(&gpio_s->gpio_lock, flags);
+	scoped_guard(spinlock_irqsave, &gpio_s->gpio_lock) {
+		mode = litex_gpio_get_reg(gpio_s, LITEX_GPIO_MODE_OFFSET);
+		edge = litex_gpio_get_reg(gpio_s, LITEX_GPIO_EDGE_OFFSET);
 
-	mode = litex_gpio_get_reg(gpio_s, LITEX_GPIO_MODE_OFFSET);
-	edge = litex_gpio_get_reg(gpio_s, LITEX_GPIO_EDGE_OFFSET);
-
-	switch (type & IRQ_TYPE_SENSE_MASK) {
-	case IRQ_TYPE_NONE:
-		break;
-	case IRQ_TYPE_EDGE_RISING:
-		litex_gpio_set_reg(gpio_s, LITEX_GPIO_MODE_OFFSET, mode & ~bit);
-		litex_gpio_set_reg(gpio_s, LITEX_GPIO_EDGE_OFFSET, edge & ~bit);
-		break;
-	case IRQ_TYPE_EDGE_FALLING:
-		litex_gpio_set_reg(gpio_s, LITEX_GPIO_MODE_OFFSET, mode & ~bit);
-		litex_gpio_set_reg(gpio_s, LITEX_GPIO_EDGE_OFFSET, edge | bit);
-		break;
-        case IRQ_TYPE_EDGE_BOTH:
-		litex_gpio_set_reg(gpio_s, LITEX_GPIO_MODE_OFFSET, mode | bit);
-		break;
-	default:
-		ret = -EINVAL;
-		break;
+		switch (type & IRQ_TYPE_SENSE_MASK) {
+		case IRQ_TYPE_NONE:
+			break;
+		case IRQ_TYPE_EDGE_RISING:
+			litex_gpio_set_reg(gpio_s, LITEX_GPIO_MODE_OFFSET,
+								mode & ~bit);
+			litex_gpio_set_reg(gpio_s, LITEX_GPIO_EDGE_OFFSET,
+								edge & ~bit);
+			break;
+		case IRQ_TYPE_EDGE_FALLING:
+			litex_gpio_set_reg(gpio_s, LITEX_GPIO_MODE_OFFSET,
+								mode & ~bit);
+			litex_gpio_set_reg(gpio_s, LITEX_GPIO_EDGE_OFFSET,
+								edge | bit);
+			break;
+		case IRQ_TYPE_EDGE_BOTH:
+			litex_gpio_set_reg(gpio_s, LITEX_GPIO_MODE_OFFSET,
+								mode | bit);
+			break;
+		default:
+			ret = -EINVAL;
+			break;
+		}
 	}
-
-	spin_unlock_irqrestore(&gpio_s->gpio_lock, flags);
 
 	return ret;
 }
@@ -230,14 +226,10 @@ static void litex_gpio_irq_eoi(struct irq_data *idata)
 	struct litex_gpio *gpio_s = gpiochip_get_data(chip);
 	int offset = irqd_to_hwirq(idata) % GPIO_PINS_MAX;
 	u32 bit = BIT(offset);
-	unsigned long flags;
-
-	spin_lock_irqsave(&gpio_s->gpio_lock, flags);
 
 	/* Clear all pending interrupts */
-	litex_gpio_set_reg(gpio_s, LITEX_GPIO_PENDING_OFFSET, bit);
-
-	spin_unlock_irqrestore(&gpio_s->gpio_lock, flags);
+	scoped_guard(spinlock_irqsave, &gpio_s->gpio_lock)
+		litex_gpio_set_reg(gpio_s, LITEX_GPIO_PENDING_OFFSET, bit);
 
 	irq_chip_eoi_parent(idata);
 }
