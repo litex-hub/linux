@@ -186,15 +186,12 @@ static int litex_gpio_irq_set_type(struct irq_data *idata, unsigned int type)
 	int offset = irqd_to_hwirq(idata) % GPIO_PINS_MAX;
 	u32 bit = BIT(offset);
 	u32 mode, edge;
-	int ret = 0;
 
 	scoped_guard(spinlock_irqsave, &gpio_s->gpio_lock) {
 		mode = litex_gpio_get_reg(gpio_s, LITEX_GPIO_MODE_OFFSET);
 		edge = litex_gpio_get_reg(gpio_s, LITEX_GPIO_EDGE_OFFSET);
 
 		switch (type & IRQ_TYPE_SENSE_MASK) {
-		case IRQ_TYPE_NONE:
-			break;
 		case IRQ_TYPE_EDGE_RISING:
 			litex_gpio_set_reg(gpio_s, LITEX_GPIO_MODE_OFFSET,
 								mode & ~bit);
@@ -211,13 +208,14 @@ static int litex_gpio_irq_set_type(struct irq_data *idata, unsigned int type)
 			litex_gpio_set_reg(gpio_s, LITEX_GPIO_MODE_OFFSET,
 								mode | bit);
 			break;
-		default:
-			ret = -EINVAL;
+		case IRQ_TYPE_NONE:
 			break;
+		default:
+			return -EINVAL;
 		}
 	}
 
-	return ret;
+	return 0;
 }
 
 static void litex_gpio_irq_eoi(struct irq_data *idata)
