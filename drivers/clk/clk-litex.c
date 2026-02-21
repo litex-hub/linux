@@ -1589,7 +1589,7 @@ static int litex_clk_init_clkouts(struct device *dev,
 
 		ret = litex_clk_read_clkout_dts(child_node, clkout);
 		if (ret != 0)
-			return ret;
+			goto put_child_node;
 
 		clkout_init.name = child_node->name;
 		clkout_init.ops = &litex_clk_ops;
@@ -1608,7 +1608,7 @@ static int litex_clk_init_clkouts(struct device *dev,
 			ret = litex_clk_set_dm(hw);
 			litex_clk_disable(hw);
 			if (ret != 0)
-				return ret;
+				goto put_child_node;
 		}
 
 		ret = litex_clk_set_def_clkout(&clkout->clk_hw,
@@ -1618,16 +1618,20 @@ static int litex_clk_init_clkouts(struct device *dev,
 		if (ret != 0) {
 			pr_err("devm_clk_hw_register failure, %s ret: %d\n",
 						child_node->name, ret);
-			return ret;
+			goto put_child_node;
 		}
 
 		ret = of_clk_add_hw_provider(child_node, of_clk_hw_simple_get,
 							     &clkout->clk_hw);
 		if (ret != 0)
-			return ret;
+			goto put_child_node;
 		i++;
 	}
 	return 0;
+
+put_child_node:
+	of_node_put(child_node);
+	return ret;
 }
 
 static int litex_clk_read_global_dts(struct device *dev,
