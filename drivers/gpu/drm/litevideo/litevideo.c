@@ -287,7 +287,6 @@ static struct platform_driver litevideo_platform_driver = {
 	.probe = litevideo_probe,
 	.driver = {
 		.name = DRIVER_NAME,
-		.owner = THIS_MODULE,
 		.of_match_table = litevideo_of_match,
 	},
 };
