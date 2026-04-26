@@ -68,10 +68,10 @@
 #define SD_SLEEP_US       5
 #define SD_TIMEOUT_US 20000
 
-#define SDIRQ_CARD_DETECT    1
-#define SDIRQ_SD_TO_MEM_DONE 2
-#define SDIRQ_MEM_TO_SD_DONE 4
-#define SDIRQ_CMD_DONE       8
+#define SDIRQ_CARD_DETECT    BIT(0)
+#define SDIRQ_SD_TO_MEM_DONE BIT(1)
+#define SDIRQ_MEM_TO_SD_DONE BIT(2)
+#define SDIRQ_CMD_DONE       BIT(3)
 
 struct litex_mmc_host {
 	struct mmc_host *mmc;
@@ -87,6 +87,7 @@ struct litex_mmc_host {
 	dma_addr_t dma;
 
 	struct completion cmd_done;
+	struct completion data_done;
 	int irq;
 
 	unsigned int ref_clk;
@@ -124,27 +125,19 @@ static int litex_mmc_send_cmd(struct litex_mmc_host *host,
 			      u8 cmd, u32 arg, u8 response_len, u8 transfer)
 {
 	struct device *dev = mmc_dev(host->mmc);
-	void __iomem *reg;
 	int ret;
-	u8 evt;
 
+	if (host->irq > 0)
+		reinit_completion(&host->cmd_done);
+
+	/* Send command */
 	litex_write32(host->sdcore + LITEX_CORE_CMDARG, arg);
 	litex_write32(host->sdcore + LITEX_CORE_CMDCMD,
 		      cmd << 8 | transfer << 5 | response_len);
 	litex_write8(host->sdcore + LITEX_CORE_CMDSND, 1);
 
-	/*
-	 * Wait for an interrupt if we have an interrupt and either there is
-	 * data to be transferred, or if the card can report busy via DAT0.
-	 */
-	if (host->irq > 0 &&
-	    (transfer != SD_CTL_DATA_XFER_NONE ||
-	     response_len == SD_CTL_RESP_SHORT_BUSY)) {
-		reinit_completion(&host->cmd_done);
-		litex_write32(host->sdirq + LITEX_IRQ_ENABLE,
-			      SDIRQ_CMD_DONE | SDIRQ_CARD_DETECT);
+	if (host->irq > 0)
 		wait_for_completion(&host->cmd_done);
-	}
 
 	ret = litex_mmc_sdcard_wait_done(host->sdcore + LITEX_CORE_CMDEVT, dev);
 	if (ret) {
@@ -169,20 +162,14 @@ static int litex_mmc_send_cmd(struct litex_mmc_host *host,
 	if (transfer == SD_CTL_DATA_XFER_NONE)
 		return ret; /* OK from prior litex_mmc_sdcard_wait_done() */
 
+	/*
+	 * NOTE: this information becomes available at the same time
+	 * as LITEX_CORE_CMDEVT, and is therefore also covered by the
+	 * SDIRQ_CMD_DONE interrupt and cmd_done completion
+	 */
 	ret = litex_mmc_sdcard_wait_done(host->sdcore + LITEX_CORE_DATEVT, dev);
-	if (ret) {
-		dev_err(dev, "Data xfer (cmd %d) error, status %d\n", cmd, ret);
-		return ret;
-	}
-
-	/* Wait for completion of (read or write) DMA transfer */
-	reg = (transfer == SD_CTL_DATA_XFER_READ) ?
-		host->sdreader + LITEX_BLK2MEM_DONE :
-		host->sdwriter + LITEX_MEM2BLK_DONE;
-	ret = readx_poll_timeout(litex_read8, reg, evt, evt & SD_BIT_DONE,
-				 SD_SLEEP_US, SD_TIMEOUT_US);
 	if (ret)
-		dev_err(dev, "DMA timeout (cmd %d)\n", cmd);
+		dev_err(dev, "Data xfer (cmd %d) error, status %d\n", cmd, ret);
 
 	return ret;
 }
@@ -255,26 +242,39 @@ static irqreturn_t litex_mmc_interrupt(int irq, void *arg)
 	struct mmc_host *mmc = arg;
 	struct litex_mmc_host *host = mmc_priv(mmc);
 	u32 pending = litex_read32(host->sdirq + LITEX_IRQ_PENDING);
-	irqreturn_t ret = IRQ_NONE;
+	u32 handled = 0;
 
 	/* Check for card change interrupt */
 	if (pending & SDIRQ_CARD_DETECT) {
-		litex_write32(host->sdirq + LITEX_IRQ_PENDING,
-			      SDIRQ_CARD_DETECT);
+		handled |= SDIRQ_CARD_DETECT;
 		mmc_detect_change(mmc, msecs_to_jiffies(10));
-		ret = IRQ_HANDLED;
 	}
 
 	/* Check for command completed */
 	if (pending & SDIRQ_CMD_DONE) {
-		/* Disable it so it doesn't keep interrupting */
-		litex_write32(host->sdirq + LITEX_IRQ_ENABLE,
-			      SDIRQ_CARD_DETECT);
+		handled |= SDIRQ_CMD_DONE;
 		complete(&host->cmd_done);
-		ret = IRQ_HANDLED;
 	}
 
-	return ret;
+	/* Check for DMA read completed */
+	if (pending & SDIRQ_SD_TO_MEM_DONE) {
+		handled |= SDIRQ_SD_TO_MEM_DONE;
+		complete(&host->data_done);
+	}
+
+	/* Check for DMA write completed */
+	if (pending & SDIRQ_MEM_TO_SD_DONE) {
+		handled |= SDIRQ_MEM_TO_SD_DONE;
+		complete(&host->data_done);
+	}
+
+	if (handled) {
+		/* Acknowledge handled interrupts */
+		litex_write32(host->sdirq + LITEX_IRQ_PENDING, handled);
+		return IRQ_HANDLED;
+	}
+
+	return IRQ_NONE;
 }
 
 static u32 litex_mmc_response_len(struct mmc_command *cmd)
@@ -382,6 +382,9 @@ static void litex_mmc_request(struct mmc_host *mmc, struct mmc_request *mrq)
 			return;
 		}
 
+		if (host->irq > 0)
+			reinit_completion(&host->data_done);
+
 		litex_mmc_do_dma(host, data, &len, &direct, &transfer);
 	}
 
@@ -389,6 +392,22 @@ static void litex_mmc_request(struct mmc_host *mmc, struct mmc_request *mrq)
 		cmd->error = litex_mmc_send_cmd(host, cmd->opcode, cmd->arg,
 						response_len, transfer);
 	} while (cmd->error && retries-- > 0);
+
+	if (!cmd->error && transfer != SD_CTL_DATA_XFER_NONE) {
+		void __iomem *reg = (transfer == SD_CTL_DATA_XFER_READ) ?
+					host->sdreader + LITEX_BLK2MEM_DONE :
+					host->sdwriter + LITEX_MEM2BLK_DONE;
+		u8 evt;
+
+		/* Wait for completion of (read or write) DMA transfer */
+		if (host->irq > 0)
+			wait_for_completion(&host->data_done);
+		cmd->error = readx_poll_timeout(litex_read8, reg,
+						evt, evt & SD_BIT_DONE,
+						SD_SLEEP_US, SD_TIMEOUT_US);
+		if (cmd->error)
+			dev_err(dev, "DMA timeout (cmd %d)\n", cmd->opcode);
+	}
 
 	if (cmd->error) {
 		/* Card may be gone; don't assume bus width is still set */
@@ -467,6 +486,11 @@ static const struct mmc_host_ops litex_mmc_ops = {
 	.set_ios = litex_mmc_set_ios,
 };
 
+static void litex_mmc_irq_off(void *sdirq)
+{
+	litex_write32((void __iomem *)sdirq + LITEX_IRQ_ENABLE, 0);
+}
+
 static int litex_mmc_irq_init(struct platform_device *pdev,
 			      struct litex_mmc_host *host)
 {
@@ -494,9 +518,21 @@ static int litex_mmc_irq_init(struct platform_device *pdev,
 		goto use_polling;
 	}
 
-	/* Clear & enable card-change interrupts */
-	litex_write32(host->sdirq + LITEX_IRQ_PENDING, SDIRQ_CARD_DETECT);
-	litex_write32(host->sdirq + LITEX_IRQ_ENABLE, SDIRQ_CARD_DETECT);
+	ret = devm_add_action_or_reset(dev, litex_mmc_irq_off, host->sdirq);
+	if (ret)
+		return dev_err_probe(dev, ret,
+					"Can't register irq_off action\n");
+
+	/* Clear & enable interrupts */
+	litex_write32(host->sdirq + LITEX_IRQ_PENDING,
+			SDIRQ_CARD_DETECT | SDIRQ_CMD_DONE |
+			SDIRQ_SD_TO_MEM_DONE | SDIRQ_MEM_TO_SD_DONE);
+	litex_write32(host->sdirq + LITEX_IRQ_ENABLE,
+			SDIRQ_CARD_DETECT | SDIRQ_CMD_DONE |
+			SDIRQ_SD_TO_MEM_DONE | SDIRQ_MEM_TO_SD_DONE);
+
+	init_completion(&host->cmd_done);
+	init_completion(&host->data_done);
 
 	return 0;
 
@@ -573,7 +609,6 @@ static int litex_mmc_probe(struct platform_device *pdev)
 	litex_write8(host->sdreader + LITEX_BLK2MEM_ENA, 0);
 	litex_write8(host->sdwriter + LITEX_MEM2BLK_ENA, 0);
 
-	init_completion(&host->cmd_done);
 	ret = litex_mmc_irq_init(pdev, host);
 	if (ret)
 		return ret;
