@@ -29,6 +29,7 @@
 #define LITEX_PHY_CLOCKERDIV  0x04
 #define LITEX_PHY_INITIALIZE  0x08
 #define LITEX_PHY_WRITESTATUS 0x0C
+#define LITEX_PHY_SETTINGS    0x18
 #define LITEX_CORE_CMDARG     0x00
 #define LITEX_CORE_CMDCMD     0x04
 #define LITEX_CORE_CMDSND     0x08
@@ -68,6 +69,12 @@
 
 #define SD_SLEEP_US       5
 #define SD_TIMEOUT_US 20000
+
+#define SD_INIT_DELAY_US  1000
+#define SD_INIT_CLK_HZ    400000
+
+#define SD_PHY_SPEED_1X 0
+#define SD_PHY_SPEED_4X 1
 
 #define SDIRQ_CARD_DETECT    1
 #define SDIRQ_SD_TO_MEM_DONE 2
@@ -220,6 +227,8 @@ static int litex_mmc_set_bus_width(struct litex_mmc_host *host)
 	ret = litex_mmc_send_set_bus_w_cmd(host, MMC_BUS_WIDTH_4);
 	if (ret)
 		return ret;
+
+	litex_write8(host->sdphy + LITEX_PHY_SETTINGS, SD_PHY_SPEED_4X);
 
 	/* Re-send 'app_cmd' if necessary */
 	if (app_cmd_sent) {
@@ -458,6 +467,12 @@ static void litex_mmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 {
 	struct litex_mmc_host *host = mmc_priv(mmc);
 
+	if (ios->chip_select == MMC_CS_HIGH) {
+		litex_write8(host->sdphy + LITEX_PHY_SETTINGS, SD_PHY_SPEED_1X);
+		ios->clock = SD_INIT_CLK_HZ;
+		host->is_bus_width_set = false;
+	}
+
 	/*
 	 * NOTE: Ignore any ios->bus_width updates; they occur right after
 	 * the mmc core sends its own acmd6 bus-width change notification,
@@ -466,8 +481,14 @@ static void litex_mmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 	 */
 
 	/* Update sd_clk */
-	if (ios->clock != host->sd_clk)
+	if (ios->clock != host->sd_clk) {
 		litex_mmc_setclk(host, ios->clock);
+	}
+
+	if (ios->chip_select == MMC_CS_HIGH) {
+		litex_write8(host->sdphy + LITEX_PHY_INITIALIZE, 1);
+		fsleep(SD_INIT_DELAY_US);
+	}
 }
 
 static const struct mmc_host_ops litex_mmc_ops = {
@@ -599,7 +620,7 @@ static int litex_mmc_probe(struct platform_device *pdev)
 	 * Set default sd_clk frequency range based on empirical observations
 	 * of LiteSDCard gateware behavior on typical SDCard media
 	 */
-	mmc->f_min = 12.5e6;
+	mmc->f_min = SD_INIT_CLK_HZ;
 	mmc->f_max = 50e6;
 
 	ret = mmc_of_parse(mmc);
