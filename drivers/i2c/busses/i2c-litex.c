@@ -116,7 +116,7 @@ static int litex_i2c_probe(struct platform_device *pdev)
 	i2c_s->reg_w = membase + OFFSET_REG_W;
 	i2c_s->reg_r = membase + OFFSET_REG_R;
 
-	strncpy(i2c_s->adapter.name, "litex_i2c_adapter",
+	strscpy(i2c_s->adapter.name, "litex_i2c_adapter",
 		sizeof(i2c_s->adapter.name));
 	i2c_s->adapter.owner        = THIS_MODULE;
 	i2c_s->adapter.algo_data    = &i2c_s->algo_data;
